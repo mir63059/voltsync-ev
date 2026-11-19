@@ -1,0 +1,14 @@
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+
+# Local tooling
+.DS_Store
+*.log
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+.vercel
+.netlify
