@@ -4,6 +4,7 @@
 // Browser-safe Supabase configuration. Set SUPABASE_URL here or enter it in the gear modal.
 const SUPABASE_URL = 'https://atucbucsqqtadfgzowiy.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_2ShhTVhq7BKaEezETih2jg_xbTa3ggf';
+const AUTH_REDIRECT_URL = 'https://mir63059.github.io/voltsync-ev/';
 const isPrivateIPv4 = (hostname) => {
   const parts=hostname.split('.');
   if(parts.length!==4||parts.some(part=>!/^\d+$/.test(part)))return false;
@@ -53,10 +54,26 @@ const $ = (id) => document.getElementById(id);
 const fmt = (n) => Number(n || 0).toLocaleString('en-PK',{maximumFractionDigits:2});
 const fmtEnergy = (n) => Number(n || 0).toLocaleString('en-PK',{minimumFractionDigits:3,maximumFractionDigits:3});
 const roundMoney = (amount) => Math.round((Number(amount) + Number.EPSILON) * 100) / 100;
+let deferredInstallPrompt = null;
 const toast = (message, type='success') => {
   const el=document.createElement('div'); el.className=`fade-in px-4 py-3 rounded-xl text-xs font-semibold border shadow-xl ${type==='error'?'bg-red-950 border-red-700 text-red-300':'bg-slate-900 border-emerald-500/30 text-emerald-300'}`;
   el.textContent=message; $('toast').appendChild(el); setTimeout(()=>el.remove(),3500);
 };
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  const button = $('install-app');
+  if (button) {
+    button.textContent = 'Install App';
+    button.classList.remove('hidden');
+    $('install-help').classList.add('hidden');
+  }
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  $('install-app')?.classList.add('hidden');
+  $('install-help')?.classList.add('hidden');
+});
 const consoleLog=(packet,type='IN')=>{
   const el=document.createElement('div'); const time=new Date().toLocaleTimeString('en-PK');
   el.innerHTML=`<span class="text-slate-500">${time}</span> <span class="${type==='OUT'?'text-amber-400':'text-emerald-400'}">${type}</span> <span class="text-slate-300">${typeof packet==='string'?packet:JSON.stringify(packet)}</span>`;
@@ -419,6 +436,7 @@ function setAuthTab(mode) {
   state.authMode = mode;
   const login = mode === 'login';
   $('signup-fields').classList.toggle('hidden', login);
+  $('auth-password').autocomplete = login ? 'current-password' : 'new-password';
   $('auth-submit').textContent = login ? 'Log In' : 'Create Account';
   $('auth-login-tab').className = login ? 'auth-tab rounded-lg bg-emerald-500 px-3 py-2 text-sm font-bold text-slate-950' : 'auth-tab rounded-lg px-3 py-2 text-sm text-slate-400';
   $('auth-signup-tab').className = !login ? 'auth-tab rounded-lg bg-emerald-500 px-3 py-2 text-sm font-bold text-slate-950' : 'auth-tab rounded-lg px-3 py-2 text-sm text-slate-400';
@@ -442,7 +460,10 @@ async function handleAuthSubmit(event) {
       result = await state.supabase.auth.signUp({
         email,
         password,
-        options: { data: { full_name: name, phone } }
+        options: {
+          data: { full_name: name, phone },
+          emailRedirectTo: AUTH_REDIRECT_URL
+        }
       });
     } else {
       result = await state.supabase.auth.signInWithPassword({ email, password });
@@ -636,6 +657,7 @@ async function productionInit() {
   bindProductionUI();
   setInterval(updateClock, 1000);
   updateClock();
+  setupInstallSupport();
   $('auth-screen').classList.remove('hidden');
   $('auth-screen').classList.add('grid');
   setAuthTab('login');
@@ -663,6 +685,36 @@ async function productionInit() {
     }, 300);
   }
 
+}
+
+function setupInstallSupport() {
+  const button = $('install-app');
+  const help = $('install-help');
+  const isAppleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || navigator.standalone === true;
+  if (isStandalone) return;
+  if (isAppleMobile) {
+    button.classList.remove('hidden');
+    help.classList.remove('hidden');
+  }
+  button.onclick = async () => {
+    if (!deferredInstallPrompt) {
+      if (isAppleMobile) toast('Tap Share, then Add to Home Screen to install RideaseVX.');
+      return;
+    }
+    const installPrompt = deferredInstallPrompt;
+    deferredInstallPrompt = null;
+    try {
+      await installPrompt.prompt();
+      const { outcome } = await installPrompt.userChoice;
+      if (outcome === 'accepted') toast('RideaseVX installed');
+      button.classList.add('hidden');
+    } catch (error) {
+      toast(`Could not open the install prompt: ${error.message}`, 'error');
+    }
+  };
 }
 
 async function connectProductionSupabase(url, key) {
@@ -702,3 +754,9 @@ async function connectProductionSupabase(url, key) {
 // Replace the original demo bootstrap and make authentication the production entry point.
 document.removeEventListener?.('DOMContentLoaded', init);
 document.addEventListener('DOMContentLoaded', productionInit);
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { scope: './' })
+      .catch(error => console.error('RideaseVX service worker registration failed:', error));
+  });
+}

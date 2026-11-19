@@ -7,7 +7,7 @@ A prototype EV charging management SPA with Supabase authentication, realtime st
 1. Create a project at https://supabase.com.
 2. Open **SQL Editor**.
 3. Paste the complete contents of `supabase-schema.sql` and select **Run**.
-4. In Supabase Authentication URL Configuration, set the deployed app URL as the Site URL and add it to Redirect URLs.
+4. In Supabase **Authentication → URL Configuration**, set the Site URL to `https://mir63059.github.io/voltsync-ev/` and add `https://mir63059.github.io/voltsync-ev/**` to Redirect URLs.
 5. In **Authentication → Providers → Email**, enable Email/Password authentication.
 6. Create an account through the app, then in **Table Editor → profiles**, set that user's `role` column to `admin`.
 
@@ -71,7 +71,8 @@ git push -u origin main
 2. In the repository, open **Settings → Pages**.
 3. Under **Build and deployment**, choose **Deploy from a branch**, select branch `main` and folder `/(root)`, then select **Save**.
 4. Wait for the Pages deployment to finish. The site URL is `https://<username>.github.io/voltsync-ev/`.
-5. In Supabase, open **Authentication → URL Configuration**. Set **Site URL** to that exact URL and add the same URL to **Redirect URLs**.
+5. In Supabase, open **Authentication → URL Configuration**. Set **Site URL** to `https://mir63059.github.io/voltsync-ev/` and add `https://mir63059.github.io/voltsync-ev/**` to **Redirect URLs**. Sign-up confirmation links use this Pages URL rather than `localhost`.
+6. To install on Android, open the Pages URL in Chrome and select **Install App** or the browser's install option. On iPhone or iPad, open it in Safari, tap **Share**, then **Add to Home Screen**. The HTML, styles, and icons are cached; external libraries, sign-in, and Supabase data still require a network connection.
 
 This is a static site and needs no build command. Its app and stylesheet are referenced with relative paths, and its Supabase endpoint and external browser libraries use HTTPS.
 
