@@ -5,38 +5,21 @@
 const SUPABASE_URL = 'https://atucbucsqqtadfgzowiy.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_2ShhTVhq7BKaEezETih2jg_xbTa3ggf';
 const AUTH_REDIRECT_URL = 'https://mir63059.github.io/voltsync-ev/';
-const isPrivateIPv4 = (hostname) => {
-  const parts=hostname.split('.');
-  if(parts.length!==4||parts.some(part=>!/^\d+$/.test(part)))return false;
-  const octets=parts.map(Number);
-  if(octets.some(octet=>octet<0||octet>255))return false;
-  return octets[0] === 10
-    || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
-    || (octets[0] === 192 && octets[1] === 168)
-    || (octets[0] === 169 && octets[1] === 254);
-};
-const isPrivateIPv6 = (hostname) => {
-  const firstSegment=hostname.replace(/^\[|\]$/g,'').toLowerCase().split(':')[0];
-  return /^(fc|fd)/.test(firstSegment)||/^fe[89ab]/.test(firstSegment);
-};
-const isLocalDevelopment = ['localhost','127.0.0.1','::1','[::1]'].includes(location.hostname)
-  || location.hostname.endsWith('.local')
-  || isPrivateIPv4(location.hostname)
-  || isPrivateIPv6(location.hostname);
-const SIMULATED_POWER_KW = 5.4;
-const SIMULATION_INTERVAL_MS = 200;
-
+const EASYPAISA_ACCOUNT_TITLE = 'YOUR_EASYPAISA_ACCOUNT_TITLE';
+const EASYPAISA_ACCOUNT_NUMBER = '03XX-XXXXXXX';
+const EASYPAISA_QR_IMAGE = './easypaisa-qr.png';
+const ADMIN_EMAILS = ['your-admin-email@example.com'];
 // Never place a Supabase secret/service-role key in this file.
 
 const DEMO_USERS = [
-  { id:'demo-1', full_name:'Ali Khan', initials:'AK', wallet_balance:2500, total_sessions:4 },
-  { id:'demo-2', full_name:'Sara Ahmed', initials:'SA', wallet_balance:1800, total_sessions:2 },
-  { id:'demo-3', full_name:'Usman Tariq', initials:'UT', wallet_balance:3200, total_sessions:6 }
+  { id:'demo-1', full_name:'Ali Khan', initials:'AK', paid_balance:0, total_sessions:0 },
+  { id:'demo-2', full_name:'Sara Ahmed', initials:'SA', paid_balance:0, total_sessions:0 },
+  { id:'demo-3', full_name:'Usman Tariq', initials:'UT', paid_balance:0, total_sessions:0 }
 ];
 
 const state = {
   supabase:null, configured:false, mode:'split', activeUserId:'demo-1', selectedChargerId:'CHG-001',
-  tariff:65, users:structuredClone(DEMO_USERS), chargers:[], sessions:[], transactions:[],
+  tariff:65, users:structuredClone(DEMO_USERS), chargers:[], sessions:[], transactions:[], paymentRequests:[],
   charging:false, startedAt:null, timer:null, tick:null, activeSessionId:null,
   lastBilledAmount:0, sessionBudget:0, sessionUnitRate:0,
   sessionStartingBatteryPct:0,
@@ -47,7 +30,7 @@ const state = {
   demoMode: true,
   qrScanner: null,
   currentQrId: null,
-  realtimeChannel: null
+  realtimeChannel: null, authSubscription:null, sessionUserId:null, sessionLoad:null
 };
 
 const $ = (id) => document.getElementById(id);
@@ -103,9 +86,33 @@ async function init(){
 }
 
 function setDemoMode(){
-  state.configured=false; state.supabase=null;
+  if(state.realtimeChannel&&state.supabase)state.supabase.removeChannel(state.realtimeChannel);
+  state.authSubscription?.unsubscribe();
+  state.configured=false;
+  state.supabase=null;
+  state.demoMode=true;
+  state.session=null;
+  state.sessionUserId=null;
+  state.sessionLoad=null;
+  state.authSubscription=null;
+  state.realtimeChannel=null;
+  state.profile=null;
+  state.isAdmin=false;
+  state.activeDbSession=null;
+  state.charging=false;
+  state.paymentRequests=[];
+  state.sessions=[];
+  state.users=structuredClone(DEMO_USERS);
+  state.mode='mobile';
+  seedDemo();
+  $('auth-screen').classList.remove('hidden');
+  $('auth-screen').classList.add('grid');
+  $('account-info').classList.add('hidden');
+  $('logout-btn').classList.add('hidden');
+  document.querySelector('[data-mode="admin"]')?.classList.add('hidden');
+  $('admin-panel').classList.add('hidden');
   $('backend-status').textContent='Local Demo'; $('backend-status').className='text-xs font-mono text-amber-400'; $('backend-dot').className='relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400 status-dot';
-  renderAll(); consoleLog({mode:'demo',broker:'simulation',status:'connected'} ,'IN');
+  renderAll(); consoleLog({mode:'demo',status:'authentication-required; charging-disabled'},'IN');
 }
 
 async function connectSupabase(url,key,notify=true){
@@ -122,32 +129,45 @@ async function connectSupabase(url,key,notify=true){
 async function loadSupabaseData(){
   if(!state.configured) return;
   const sb=state.supabase;
-  const profilesRequest = state.session
-    ? sb.from('profiles').select('*').order('full_name')
-    : Promise.resolve({data:[],error:null});
-  const sessionsRequest = state.session
-    ? sb.from('sessions').select('*').order('started_at',{ascending:false}).limit(500)
-    : Promise.resolve({data:[],error:null});
-  const [chargers,settings,profiles,sessions] = await Promise.all([
+  const isAdmin = state.isAdmin;
+  const profilesRequest = state.session && isAdmin
+  ? sb.from('profiles').select('id,email,full_name,phone,role,paid_balance,total_sessions,created_at').order('full_name')
+  : Promise.resolve({data:state.profile?[state.profile]:[],error:null});
+  let sessionsQuery=state.session
+  ? sb.from('sessions').select('*')
+  : null;
+  if(sessionsQuery&&!isAdmin)sessionsQuery=sessionsQuery.eq('user_id',state.session.user.id);
+  const sessionsRequest = sessionsQuery
+  ? sessionsQuery.order('started_at',{ascending:false}).limit(isAdmin?500:100)
+  : Promise.resolve({data:[],error:null});
+  const paymentsRequest = state.session
+  ? sb.from('easypaisa_payment_requests').select('*').order('created_at',{ascending:false}).limit(isAdmin?200:20)
+  : Promise.resolve({data:[],error:null});
+  const [chargers,settings,profiles,sessions,payments] = await Promise.all([
     sb.from('stations').select('*').order('id'),
     sb.from('system_settings').select('*').eq('id',1).maybeSingle(),
     profilesRequest,
-    sessionsRequest
+  sessionsRequest,
+  paymentsRequest
   ]);
-  if(chargers.error||settings.error||profiles.error||sessions.error) throw chargers.error||settings.error||profiles.error||sessions.error;
+  if(chargers.error||settings.error||profiles.error||sessions.error||payments.error) throw chargers.error||settings.error||profiles.error||sessions.error||payments.error;
   if(chargers.data?.length) state.chargers=chargers.data;
   if(settings.data) state.tariff=Number(settings.data.unit_rate_pkr);
-  if(profiles.data?.length) state.users=profiles.data;
+  state.users=profiles.data||[];
   state.sessions=sessions.data||[];
+  state.paymentRequests=payments.data||[];
+  syncActiveSession();
   renderAll();
 }
 
 function subscribeRealtime(){
   if(!state.configured) return;
-  state.supabase.channel('voltsync-live')
+  if(state.realtimeChannel) state.supabase.removeChannel(state.realtimeChannel);
+  state.realtimeChannel=state.supabase.channel('rideasevx-live')
     .on('postgres_changes',{event:'*',schema:'public',table:'stations'},payload=>{ upsertRealtime('stations',payload); consoleLog({table:'stations',event:payload.eventType,row:payload.new||payload.old},'IN'); })
     .on('postgres_changes',{event:'*',schema:'public',table:'sessions'},payload=>{ upsertRealtime('sessions',payload); consoleLog({table:'sessions',event:payload.eventType,row:payload.new||payload.old},'IN'); })
     .on('postgres_changes',{event:'*',schema:'public',table:'profiles'},payload=>{ upsertRealtime('profiles',payload); renderAll(); })
+  .on('postgres_changes',{event:'*',schema:'public',table:'easypaisa_payment_requests'},payload=>{ upsertPaymentRequest(payload); })
     .on('postgres_changes',{event:'*',schema:'public',table:'system_settings'},payload=>{ if(payload.new?.unit_rate_pkr) state.tariff=Number(payload.new.unit_rate_pkr); renderAll(); consoleLog({table:'system_settings',unit_rate_pkr:payload.new?.unit_rate_pkr},'IN'); })
     .subscribe(status=>consoleLog({channel:'voltsync-live',status},'IN'));
 }
@@ -160,8 +180,42 @@ function upsertRealtime(table,payload){
   if(table==='sessions'){
     if(payload.eventType==='INSERT') state.sessions.unshift(payload.new);
     else { const i=state.sessions.findIndex(x=>x.id===payload.new.id); if(i>=0) state.sessions[i]=payload.new; }
+    syncActiveSession();
+  }
+  if(table==='profiles'&&payload.new?.id===state.session?.user?.id){
+    state.profile=payload.new;
+    state.users=[payload.new];
   }
   renderAll();
+}
+
+function syncActiveSession(){
+  const active = state.sessions.find(session => session.user_id === state.session?.user?.id && session.status === 'active');
+  state.activeDbSession = active || null;
+  state.charging = Boolean(active);
+  if(active){
+    state.selectedChargerId=active.station_id;
+    state.sessionBudget=Number(active.budget_pkr||0);
+    state.sessionUnitRate=Number(active.unit_rate_pkr||0);
+    state.startedAt=Date.parse(active.started_at);
+  }else{
+    state.sessionBudget=0;
+    state.sessionUnitRate=0;
+    state.startedAt=null;
+  }
+}
+
+function upsertPaymentRequest(payload){
+  const request=payload.new||payload.old;
+  if(!request)return;
+  if(payload.eventType==='DELETE'){
+    state.paymentRequests=state.paymentRequests.filter(item=>item.id!==request.id);
+  }else{
+    const index=state.paymentRequests.findIndex(item=>item.id===request.id);
+    if(index>=0)state.paymentRequests[index]=request;
+    else state.paymentRequests.unshift(request);
+  }
+  renderPaymentRequests();
 }
 
 function bindUI(){
@@ -171,8 +225,10 @@ function bindUI(){
   $('close-config').onclick=()=>{ $('config-modal').classList.add('hidden'); $('config-modal').classList.remove('grid'); };
   $('save-config').onclick=()=>{ const url=$('supabase-url').value.trim(); const key=$('supabase-key').value.trim(); if(!url||!key) return toast('URL and anon key are required','error'); connectProductionSupabase(url,key); };
   $('clear-config').onclick=()=>{ localStorage.removeItem('voltsync_url'); localStorage.removeItem('voltsync_key'); $('supabase-url').value=''; $('supabase-key').value=''; $('config-modal').classList.add('hidden'); $('config-modal').classList.remove('grid'); setDemoMode(); };
-  $('topup').onclick=topUp;
   $('toggle-charge').onclick=toggleCharging;
+  $('payment-form').onsubmit=submitEasypaisaPayment;
+  $('payment-amount').onchange=syncPaymentAmount;
+  $('payment-custom-amount').oninput=syncPaymentAmount;
   $('budget-select').onchange=()=>{
     const isCustom=$('budget-select').value==='custom';
     $('custom-budget-wrap').classList.toggle('hidden',!isCustom);
@@ -187,10 +243,12 @@ function bindUI(){
 }
 
 function setViewMode(mode){
+  if(mode==='admin'&&!requireAdmin())return;
   state.mode=mode; document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
   $('workspace').className=mode==='mobile'?'grid grid-cols-1 lg:grid-cols-12 gap-6':mode==='admin'?'grid grid-cols-1 gap-6':'grid grid-cols-1 lg:grid-cols-12 gap-6';
   $('mobile-panel').className=mode==='admin'?'hidden':'lg:col-span-4 flex justify-center';
-  $('admin-panel').className=mode==='mobile'?'hidden':'lg:col-span-8 space-y-5';
+  $('admin-panel').classList.toggle('hidden',mode!=='admin'||!state.isAdmin);
+  if(mode==='split'&&state.isAdmin)$('admin-panel').classList.remove('hidden');
 }
 
 function switchMobileTab(tab){
@@ -199,17 +257,18 @@ function switchMobileTab(tab){
 }
 
 function switchUser(id){
+  if(!requireAdmin())return;
   state.activeUserId=id; const user=getActiveUser(); $('user-avatar').textContent=user.initials||String(user.full_name||'U').split(' ').map(x=>x[0]).join('').slice(0,2).toUpper();
   renderWallet(); renderHistory();
 }
 
 function getActiveUser(){
-  return state.users.find(u=>u.id===state.activeUserId)||state.users.find(u=>u.full_name?.startsWith('Ali'))||state.users[0]||DEMO_USERS[0];
+  return state.users.find(u=>u.id===state.session?.user?.id)||state.users.find(u=>u.id===state.activeUserId)||state.profile||null;
 }
 
-function renderAll(){ renderChargerList(); renderAdmin(); renderWallet(); renderMeter(); renderHistory(); }
+function renderAll(){ renderChargerList(); renderAdmin(); renderWallet(); renderMeter(); renderHistory(); renderPaymentRequests(); }
 
-function renderWallet(){ const u=getActiveUser(); $('wallet').textContent='Rs. '+fmt(u?.wallet_balance||0); updateBudgetHint(); }
+function renderWallet(){ const u=getActiveUser(); $('wallet').textContent='Rs. '+fmt(u?.paid_balance||0); updateBudgetHint(); if(state.profile)$('account-wallet').textContent='Rs. '+fmt(state.profile.paid_balance||0); }
 
 function readBudgetAmount(){
   const selected=$('budget-select').value;
@@ -223,7 +282,7 @@ function readBudgetAmount(){
 
 function updateBudgetHint(){
   const user=getActiveUser();
-  const balance=roundMoney(Number(user?.wallet_balance||0));
+  const balance=roundMoney(Number(user?.paid_balance||0));
   const budget=readBudgetAmount();
   $('budget-wallet').textContent=`Available: Rs. ${fmt(balance)}`;
   if(!budget){
@@ -238,14 +297,6 @@ function updateBudgetHint(){
   $('budget-help').textContent=rate>0
     ? `Cap: Rs. ${fmt(budget)} • about ${fmtEnergy(budget/rate)} kWh at Rs. ${fmt(rate)}/kWh`
     : `Cap: Rs. ${fmt(budget)}`;
-}
-
-async function topUp(){
-  const user=getActiveUser(); if(!user) return;
-  if(state.configured){
-    return toast('Wallet top-ups require a verified payment provider and are unavailable right now','error');
-  }else{ user.wallet_balance=Number(user.wallet_balance||0)+1000; renderWallet(); }
-  toast('Rs. 1,000 added to wallet'); consoleLog({command:'WALLET_TOPUP',user_id:state.activeUserId,amount_pkr:1000},'OUT');
 }
 
 function renderChargerList(){
@@ -265,94 +316,51 @@ function selectCharger(id){
 }
 
 async function toggleCharging(){
+  if(!state.configured||!state.session?.user)return toast('Sign in to a configured Supabase project before charging.','error');
   const c=state.chargers.find(x=>x.id===state.selectedChargerId); if(!c)return;
-  if(!state.charging){
-    if(!isLocalDevelopment)return toast('Charging is unavailable outside a local development network until trusted device telemetry is connected','error');
-    if(c.status==='offline'||c.status==='disabled') return toast('Charger unavailable','error');
-    const user=getActiveUser();
-    const budget=readBudgetAmount();
-    const balance=roundMoney(Number(user?.wallet_balance||0));
-    const rate=Number(state.tariff);
-    if(!budget)return toast('Choose a valid charging budget first','error');
-    if(!Number.isFinite(rate)||rate<=0)return toast('Charging tariff is unavailable','error');
-    if(balance<=0||balance<rate)return toast('Charging stopped: Insufficient wallet balance','error');
-    if(budget>balance)return toast('Budget exceeds your current wallet balance','error');
-    state.charging=true; state.startedAt=Date.now();
-    state.sessionBudget=budget; state.sessionUnitRate=rate; state.lastBilledAmount=0;
-    state.sessionStartingBatteryPct=Number(c.battery_pct||0);
-    c.current_kwh=0;
-    c.status='charging'; c.active_user_id=state.activeUserId;
-    $('budget-select').disabled=true; $('custom-budget').disabled=true;
-    $('toggle-charge').textContent='■ STOP CHARGING'; $('toggle-charge').className='min-h-11 w-full rounded-2xl bg-red-500 py-3.5 text-sm font-bold text-white hover:bg-red-400'; $('meter-box').classList.add('charging-glow','border-emerald-500/50');
-    consoleLog({command:'START',charger_id:c.id,user_id:state.activeUserId,budget_pkr:budget},'OUT'); startTelemetry(); renderMeter();
-  }else{ await stopCharging('User stopped session'); }
-}
-
-function getSessionProgress(elapsedSeconds){
-  const budgetKwh=state.sessionBudget/state.sessionUnitRate;
-  const rawKwh=Math.max(0,elapsedSeconds)*SIMULATED_POWER_KW/3600;
-  let energyKwh=Math.min(rawKwh,budgetKwh);
-  let billPkr=Math.min(state.sessionBudget,roundMoney(energyKwh*state.sessionUnitRate));
-  const reachedBudget=rawKwh>=budgetKwh||billPkr>=state.sessionBudget;
-  if(reachedBudget){
-    energyKwh=budgetKwh;
-    billPkr=state.sessionBudget;
+  if(state.charging)return stopCharging('User stopped session');
+  if(c.status==='offline'||c.status==='disabled'||c.status==='charging')return toast('Charger unavailable.','error');
+  const budget=readBudgetAmount();
+  const balance=roundMoney(Number(getActiveUser()?.paid_balance||0));
+  if(!budget)return toast('Choose a valid charging budget first','error');
+  if(budget>balance)return toast('Budget exceeds your verified paid balance.','error');
+  $('toggle-charge').disabled=true;
+  try{
+    const {error}=await state.supabase.rpc('start_charging_session',{
+      p_station_id:c.id,
+      p_budget_pkr:budget
+    });
+    if(error)throw error;
+    await loadSupabaseData();
+    $('payment-message').textContent='';
+    toast(`Charging started with a maximum spend of Rs. ${fmt(budget)}.`);
+  }catch(error){
+    toast(error.message,'error');
+  }finally{
+    $('toggle-charge').disabled=false;
+    renderChargingControls();
   }
-  return {energyKwh,billPkr,reachedBudget};
-}
-
-function startTelemetry(){
-  clearInterval(state.tick);
-  state.tick=setInterval(()=>{
-    const c=state.chargers.find(x=>x.id===state.selectedChargerId); if(!c||!state.charging)return;
-    const elapsed=(Date.now()-state.startedAt)/1000;
-    const progress=getSessionProgress(elapsed);
-    const voltage=220+(Math.random()*3-1.5);
-    const current=SIMULATED_POWER_KW*1000/voltage;
-    const u=getActiveUser();
-    const addedBill=roundMoney(Math.max(0,progress.billPkr-state.lastBilledAmount));
-    u.wallet_balance=roundMoney(Math.max(0,Number(u.wallet_balance||0)-addedBill));
-    state.lastBilledAmount=progress.billPkr;
-    if(state.profile)state.profile.wallet_balance=u.wallet_balance;
-    c.voltage=voltage; c.current=current; c.current_kwh=progress.energyKwh;
-    c.battery_pct=Math.min(100,Math.round(state.sessionStartingBatteryPct+elapsed/900));
-    renderWallet();
-    renderMeter();
-    if(u.wallet_balance<=0||u.wallet_balance<state.sessionUnitRate){
-      stopCharging('Insufficient wallet balance','Charging stopped: Insufficient wallet balance');
-    }else if(progress.reachedBudget){
-      stopCharging('Budget reached',`Budget reached • Rs. ${fmt(state.sessionBudget)} billed`);
-    }
-  },SIMULATION_INTERVAL_MS);
 }
 
 async function stopCharging(reason,notification=null){
-  if(!state.charging)return;
-  clearInterval(state.tick);
-  const c=state.chargers.find(x=>x.id===state.selectedChargerId);
-  if(!c)return;
-  const elapsed=Math.max(0,(Date.now()-state.startedAt)/1000);
-  const progress=getSessionProgress(elapsed);
-  const user=getActiveUser();
-  const addedBill=roundMoney(Math.max(0,progress.billPkr-state.lastBilledAmount));
-  user.wallet_balance=roundMoney(Math.max(0,Number(user.wallet_balance||0)-addedBill));
-  if(state.profile)state.profile.wallet_balance=user.wallet_balance;
-  user.total_sessions=(user.total_sessions||0)+1;
-  state.sessions.unshift({
-    id:crypto.randomUUID(),session_code:'SES-'+Math.floor(100+Math.random()*899),
-    station_id:c.id,user_id:user.id,energy_kwh:progress.energyKwh,unit_rate_pkr:state.sessionUnitRate,
-    budget_pkr:state.sessionBudget,total_bill_pkr:progress.billPkr,duration_seconds:Math.floor(elapsed),
-    status:'completed',started_at:new Date(state.startedAt).toISOString(),ended_at:new Date().toISOString()
-  });
-  state.lastBilledAmount=progress.billPkr;
-  state.charging=false; c.status='online'; c.voltage=0; c.current=0; c.active_user_id=null;
-  state.lastBilledAmount=0; state.sessionBudget=0; state.sessionUnitRate=0;
-  c.current_kwh=0;
-  $('budget-select').disabled=false; $('custom-budget').disabled=false;
-  $('toggle-charge').textContent='⚡ START CHARGING'; $('toggle-charge').className='min-h-11 w-full rounded-2xl bg-emerald-500 py-3.5 text-sm font-bold text-slate-950 hover:bg-emerald-400'; $('meter-box').classList.remove('charging-glow','border-emerald-500/50');
-  renderAll(); if(state.profile)renderAuthenticatedAccount();
-  toast(notification||`Charging stopped • Rs. ${fmt(progress.billPkr)} billed`,notification?'error':'success');
-  consoleLog({command:'STOP',charger_id:c.id,reason,bill_pkr:progress.billPkr},'OUT');
+  const session=state.activeDbSession;
+  if(!session||!state.configured)return;
+  $('toggle-charge').disabled=true;
+  try{
+    const {data,error}=await state.supabase.rpc('complete_charging_session',{
+      p_station_id:session.station_id,
+      p_reason:reason||'User stopped session'
+    });
+    if(error)throw error;
+    await loadSupabaseData();
+    const billed=Number(data?.bill_pkr||0);
+    toast(notification||`Charging stopped • Rs. ${fmt(billed)} used; unused balance returned.`);
+  }catch(error){
+    toast(error.message,'error');
+  }finally{
+    $('toggle-charge').disabled=false;
+    renderChargingControls();
+  }
 }
 
 function renderMeter(){
@@ -360,56 +368,79 @@ function renderMeter(){
   const elapsed=state.charging?Math.floor((Date.now()-state.startedAt)/1000):0;
   $('session-duration').textContent=secondsToHMS(elapsed); $('battery-pct').textContent=Math.round(c.battery_pct||0); $('battery-bar').style.width=(c.battery_pct||0)+'%';
   $('voltage').textContent=fmt(c.voltage||0)+' V'; $('current').textContent=fmt(c.current||0)+' A'; $('kwh').textContent=fmtEnergy(c.current_kwh||0)+' kWh';
-  const bill=(c.current_kwh||0)*(state.charging?state.sessionUnitRate:state.tariff); $('bill').textContent='Rs. '+fmt(bill); $('power').textContent=fmt((c.voltage||0)*(c.current||0)/1000)+' kW';
+  const bill=state.activeDbSession
+    ? Number(state.activeDbSession.total_bill_pkr||0)
+    : (c.current_kwh||0)*state.tariff;
+  $('bill').textContent='Rs. '+fmt(bill); $('power').textContent=fmt((c.voltage||0)*(c.current||0)/1000)+' kW';
+  renderChargingControls();
+}
+
+function renderChargingControls(){
+  const active=state.activeDbSession;
+  $('toggle-charge').textContent=active?'■ STOP CHARGING':'⚡ START CHARGING';
+  $('toggle-charge').classList.toggle('bg-red-500',Boolean(active));
+  $('toggle-charge').classList.toggle('bg-emerald-500',!active);
+  $('toggle-charge').classList.toggle('text-white',Boolean(active));
+  $('toggle-charge').classList.toggle('text-slate-950',!active);
+  $('budget-select').disabled=Boolean(active);
+  $('custom-budget').disabled=Boolean(active);
+  if(active){
+    $('budget-help').textContent=`Reserved: Rs. ${fmt(active.budget_pkr)} • used: Rs. ${fmt(active.total_bill_pkr)}. Remaining reserved balance is refunded when stopped.`;
+    $('app-charger-code').textContent=active.station_id;
+  }
 }
 
 function secondsToHMS(s){ const h=Math.floor(s/3600),m=Math.floor(s%3600/60),sec=s%60; return [h,m,sec].map(x=>String(x).padStart(2,'0')).join(':'); }
 
 function renderHistory(){
-  const sessions=state.sessions.filter(s=>s.user_id===state.activeUserId); $('history-count').textContent=sessions.length+' Sessions';
+  const userId=state.session?.user?.id||getActiveUser()?.id;
+  const sessions=state.sessions.filter(s=>s.user_id===userId); $('history-count').textContent=sessions.length+' Sessions';
   $('history-list').innerHTML=sessions.slice(0,20).map(s=>`<div class="bg-slate-900 border border-slate-800 rounded-xl p-3"><div class="flex justify-between"><span class="font-mono text-xs text-emerald-400">${s.session_code||'SESSION'}</span><span class="text-[10px] px-2 py-0.5 rounded-full ${s.status==='active'?'bg-emerald-500/15 text-emerald-400':'bg-slate-800 text-slate-400'}">${s.status}</span></div><div class="mt-2 flex justify-between text-xs"><span>${s.station_id||'-'}</span><b class="text-emerald-400">Rs. ${fmt(s.total_bill_pkr||0)}</b></div><div class="mt-1 text-[10px] text-slate-400">${fmtEnergy(s.energy_kwh||0)} kWh • ${secondsToHMS(s.duration_seconds||0)}</div></div>`).join('')||'<div class="text-xs text-slate-500 text-center py-8">No charging sessions yet</div>';
 }
 
 function renderAdmin(){
+  $('admin-panel').classList.toggle('hidden',!state.isAdmin);
+  if(!state.isAdmin)return;
   const active=state.chargers.filter(c=>c.status==='charging').length; const energy=state.sessions.filter(s=>s.status==='completed').reduce((n,s)=>n+Number(s.energy_kwh||0),0); const revenue=state.sessions.filter(s=>s.status==='completed').reduce((n,s)=>n+Number(s.total_bill_pkr||0),0);
   $('kpi-users').textContent=fmt(state.users.length); $('kpi-boxes').textContent=state.chargers.length; $('kpi-active').textContent=active; $('kpi-energy').textContent=fmt(energy)+' kWh'; $('kpi-revenue').textContent='Rs. '+fmt(revenue); $('kpi-tariff').textContent='Rs. '+fmt(state.tariff); $('tariff-input').value=state.tariff;
   $('telemetry-table').innerHTML=state.chargers.map(c=>{ const u=state.users.find(x=>x.id===c.active_user_id); const st=c.status==='charging'?'text-emerald-400':c.status==='offline'||c.status==='disabled'?'text-slate-500':'text-cyan-400';
-    return `<tr class="border-b border-slate-800/70"><td class="p-3"><b class="font-mono text-emerald-400">${c.id}</b><div class="text-slate-500">${c.name}</div></td><td class="${st}">${c.status}</td><td class="font-mono">${fmt(c.voltage)} V</td><td class="font-mono">${fmt(c.current)} A</td><td class="font-mono">${fmtEnergy(c.current_kwh)} kWh</td><td>${c.battery_pct||0}%</td><td>${u?.full_name||'-'}</td><td><div class="flex flex-wrap gap-1"><button class="admin-qr px-2 py-1 rounded bg-sky-500/15 text-sky-300" data-id="${c.id}">View / Print QR</button><button class="admin-start px-2 py-1 rounded bg-emerald-500/15 text-emerald-400" data-id="${c.id}">Start</button><button class="admin-stop px-2 py-1 rounded bg-red-500/15 text-red-400" data-id="${c.id}">Stop</button><button class="admin-disable px-2 py-1 rounded bg-slate-800 text-slate-300" data-id="${c.id}">${c.status==='disabled'?'Enable':'Disable'}</button></div></td></tr>`;
+    return `<tr class="border-b border-slate-800/70"><td class="p-3"><b class="font-mono text-emerald-400">${c.id}</b><div class="text-slate-500">${c.name}</div></td><td class="${st}">${c.status}</td><td class="font-mono">${fmt(c.voltage)} V</td><td class="font-mono">${fmt(c.current)} A</td><td class="font-mono">${fmtEnergy(c.current_kwh)} kWh</td><td>${c.battery_pct||0}%</td><td>${u?.full_name||'-'}</td><td><div class="flex flex-wrap gap-1"><button class="admin-qr px-2 py-1 rounded bg-sky-500/15 text-sky-300" data-id="${c.id}">View / Print QR</button><button class="admin-stop px-2 py-1 rounded bg-red-500/15 text-red-400" data-id="${c.id}">Stop</button><button class="admin-disable px-2 py-1 rounded bg-slate-800 text-slate-300" data-id="${c.id}">${c.status==='disabled'?'Enable':'Disable'}</button></div></td></tr>`;
   }).join('')||'<tr><td colspan="8" class="p-6 text-center text-slate-500">No chargers</td></tr>';
-  document.querySelectorAll('.admin-start').forEach(b=>b.onclick=()=>adminOverride(b.dataset.id,'start')); document.querySelectorAll('.admin-stop').forEach(b=>b.onclick=()=>adminOverride(b.dataset.id,'stop')); document.querySelectorAll('.admin-disable').forEach(b=>b.onclick=()=>adminOverride(b.dataset.id,'disable')); document.querySelectorAll('.admin-qr').forEach(b=>b.onclick=()=>openQrModal(b.dataset.id));
+  document.querySelectorAll('.admin-stop').forEach(b=>b.onclick=()=>adminOverride(b.dataset.id,'stop')); document.querySelectorAll('.admin-disable').forEach(b=>b.onclick=()=>adminOverride(b.dataset.id,'disable')); document.querySelectorAll('.admin-qr').forEach(b=>b.onclick=()=>openQrModal(b.dataset.id));
 }
 
 async function updateTariff(){
+  if(!requireAdmin())return;
   const value=Number($('tariff-input').value); if(!Number.isFinite(value)||value<=0)return toast('Enter a valid tariff','error');
+  if(!state.configured)return toast('Admin changes require the secured Supabase setup.','error');
+  const {error}=await state.supabase.from('system_settings').update({unit_rate_pkr:value,updated_at:new Date().toISOString()}).eq('id',1);
+  if(error)return toast(error.message,'error');
   state.tariff=value;
-  if(state.configured){ const {error}=await state.supabase.from('system_settings').update({unit_rate_pkr:value,updated_at:new Date().toISOString()}).eq('id',1); if(error)return toast(error.message,'error'); }
   renderAll(); consoleLog({command:'SET_TARIFF',unit_rate_pkr:value},'OUT'); toast('Tariff updated');
 }
 
 async function addCharger(){
+  if(!requireAdmin())return;
   const id=$('new-charger-id').value.trim().toUpperCase(); const name=$('new-charger-name').value.trim(); const location=$('new-charger-location').value.trim();
   if(!/^CHG-[0-9]+$/.test(id)||!name||!location)return toast('Enter valid charger details','error');
-  if(state.configured){ const {error}=await state.supabase.from('stations').insert({id,name,location,status:'online',voltage:0,current:0,current_kwh:0,battery_pct:50}); if(error)return toast(error.message,'error'); }
-  else if(!state.chargers.some(c=>c.id===id)) state.chargers.push({id,name,location,status:'online',voltage:0,current:0,current_kwh:0,battery_pct:50,active_user_id:null});
-  $('new-charger-id').value=''; $('new-charger-name').value=''; $('new-charger-location').value=''; renderAll(); consoleLog({command:'PROVISION',charger_id:id,name,location},'OUT'); toast(id+' registered');
+  if(!state.configured)return toast('Admin changes require the secured Supabase setup.','error');
+  const {error}=await state.supabase.from('stations').insert({id,name,location,status:'online',voltage:0,current:0,current_kwh:0,battery_pct:50});
+  if(error)return toast(error.message,'error');
+  $('new-charger-id').value=''; $('new-charger-name').value=''; $('new-charger-location').value=''; await loadSupabaseData(); consoleLog({command:'PROVISION',charger_id:id,name,location},'OUT'); toast(id+' registered');
 }
 
 async function adminOverride(id,action){
+  if(!requireAdmin())return;
   const c=state.chargers.find(x=>x.id===id); if(!c)return;
-  if(state.configured&&action==='start'){
-    return toast('Live charging is unavailable until trusted device telemetry is connected','error');
-  }
-  if(state.configured&&action==='stop'){
+  if(!state.configured)return toast('Admin actions require the secured Supabase setup.','error');
+  if(action==='stop'){
     const {error}=await state.supabase.rpc('complete_charging_session',{p_station_id:id,p_reason:'Admin stopped session'});
     if(error)return toast(error.message,'error');
-  }
-  if(action==='start'){ c.status='charging'; c.voltage=220.5; c.current=24; c.active_user_id=state.activeUserId; consoleLog({command:'START',charger_id:id,source:'admin'},'OUT'); }
-  if(action==='stop'){ c.status='online'; c.voltage=0; c.current=0; c.active_user_id=null; consoleLog({command:'STOP',charger_id:id,source:'admin'},'OUT'); }
-  if(action==='disable'){ c.status=c.status==='disabled'?'online':'disabled'; consoleLog({command:c.status==='disabled'?'DISABLE':'ENABLE',charger_id:id,source:'admin'},'OUT'); }
-  if(state.configured){
-    const {error}=await state.supabase.from('stations').update({status:c.status,voltage:c.voltage||0,current:c.current||0,active_user_id:c.active_user_id||null,updated_at:new Date().toISOString()}).eq('id',id); if(error)return toast(error.message,'error');
-  }
-  renderAll();
+  }else if(action==='disable'){
+    const {error}=await state.supabase.from('stations').update({status:c.status==='disabled'?'online':'disabled'}).eq('id',id);
+    if(error)return toast(error.message,'error');
+  }else return toast('Unknown admin action.','error');
+  await loadSupabaseData();
 }
 
 function updateClock(){ const d=new Date(); $('phone-clock').textContent=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }
@@ -430,6 +461,126 @@ Object.assign(state, {
 
 function initials(name) {
   return String(name || 'EV').split(/\s+/).filter(Boolean).map(s => s[0]).join('').slice(0, 2).toUpperCase();
+}
+
+function requireAdmin(){
+  if(state.isAdmin&&state.session?.user&&state.configured)return true;
+  toast('Administrator access is required.','error');
+  return false;
+}
+
+function isConfiguredEasypaisaAccount(){
+  return EASYPAISA_ACCOUNT_TITLE!=='YOUR_EASYPAISA_ACCOUNT_TITLE'
+    && !EASYPAISA_ACCOUNT_TITLE.includes('YOUR_')
+    && EASYPAISA_ACCOUNT_NUMBER!=='03XX-XXXXXXX'
+    && /\d{8,}/.test(EASYPAISA_ACCOUNT_NUMBER.replace(/\D/g,''));
+}
+
+function renderEasypaisaDetails(){
+  $('easypaisa-title').textContent=isConfiguredEasypaisaAccount()?EASYPAISA_ACCOUNT_TITLE:'Set EASYPAISA_ACCOUNT_TITLE in app.js';
+  $('easypaisa-number').textContent=isConfiguredEasypaisaAccount()?EASYPAISA_ACCOUNT_NUMBER:'Set EASYPAISA_ACCOUNT_NUMBER in app.js';
+  const image=$('easypaisa-qr');
+  image.classList.add('hidden');
+  $('easypaisa-qr-help').textContent=isConfiguredEasypaisaAccount()
+    ? 'Confirm the account name and amount in Easypaisa before sending.'
+    : 'Payments are disabled until you configure your Easypaisa account details.';
+  if(isConfiguredEasypaisaAccount()){
+    image.onerror=()=>{
+      image.classList.add('hidden');
+      $('easypaisa-qr-help').textContent='Add your real payment QR image as easypaisa-qr.png in the project root, or pay using the account details.';
+    };
+    image.onload=()=>image.classList.remove('hidden');
+    image.src=EASYPAISA_QR_IMAGE;
+  }else{
+    image.removeAttribute('src');
+  }
+}
+
+function selectedPaymentAmount(){
+  const raw=$('payment-amount').value==='custom'
+    ? $('payment-custom-amount').value
+    : $('payment-amount').value;
+  const amount=Number(raw);
+  if(!Number.isFinite(amount)||amount<=0||Math.abs(amount*100-Math.round(amount*100))>0.000001)return null;
+  return Math.round(amount*100);
+}
+
+function syncPaymentAmount(){
+  const isCustom=$('payment-amount').value==='custom';
+  $('payment-custom-amount').classList.toggle('hidden',!isCustom);
+  const amount=selectedPaymentAmount();
+  $('payment-paid-amount').value=amount===null?'':(amount/100).toFixed(2);
+}
+
+async function submitEasypaisaPayment(event){
+  event.preventDefault();
+  if(!state.configured||!state.session?.user)return toast('Sign in before submitting a payment.','error');
+  if(!isConfiguredEasypaisaAccount())return toast('Easypaisa account details are not configured.','error');
+  const amountCents=selectedPaymentAmount();
+  const paidAmount=Number($('payment-paid-amount').value);
+  const paidCents=Math.round(paidAmount*100);
+  if(amountCents===null||!Number.isFinite(paidAmount)||paidCents!==amountCents){
+    return toast('The amount paid must exactly match the amount you selected.','error');
+  }
+  const transactionId=$('payment-tid').value.trim();
+  if(!transactionId)return toast('Enter the Easypaisa transaction ID (TID).','error');
+  $('payment-submit').disabled=true;
+  $('payment-message').textContent='Submitting for administrator verification…';
+  try{
+    const {error}=await state.supabase.rpc('submit_easypaisa_payment',{
+      p_transaction_id:transactionId,
+      p_paid_amount_pkr:paidCents/100
+    });
+    if(error)throw error;
+    $('payment-tid').value='';
+    $('payment-message').textContent=`Rs. ${fmt(paidCents/100)} submitted. It will be credited only after the TID is verified.`;
+    await loadSupabaseData();
+  }catch(error){
+    $('payment-message').textContent=error.message;
+    toast(error.message,'error');
+  }finally{
+    $('payment-submit').disabled=false;
+  }
+}
+
+function escapeHtml(value){
+  return String(value??'').replace(/[&<>"']/g,char=>({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  })[char]);
+}
+
+function renderPaymentRequests(){
+  if(!$('payment-history'))return;
+  $('payment-history').innerHTML=state.paymentRequests
+    .filter(request=>request.user_id===state.session?.user?.id)
+    .slice(0,10)
+    .map(request=>`<div class="rounded-lg border border-slate-800 px-3 py-2 text-[11px]"><div class="flex justify-between gap-2"><span>TID ${escapeHtml(request.transaction_id)}</span><strong>Rs. ${fmt(request.paid_amount_pkr)}</strong></div><p class="mt-1 text-slate-400">Status: ${escapeHtml(request.status)}</p></div>`)
+    .join('');
+  if(!$('payment-review-list'))return;
+  $('payment-review-list').innerHTML=state.isAdmin
+    ? state.paymentRequests.filter(request=>request.status==='pending').map(request=>{
+      const owner=state.users.find(user=>user.id===request.user_id);
+      return `<div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 p-3 text-xs"><div><strong>Rs. ${fmt(request.paid_amount_pkr)}</strong> · TID <span class="font-mono">${escapeHtml(request.transaction_id)}</span><p class="text-slate-400">${escapeHtml(owner?.email||request.user_id)}</p></div><div class="flex gap-2"><button class="payment-review primary-btn" data-id="${escapeHtml(request.id)}" data-approve="true">Verify &amp; credit</button><button class="payment-review secondary-btn" data-id="${escapeHtml(request.id)}" data-approve="false">Reject</button></div></div>`;
+    }).join('')||'<p class="text-xs text-slate-400">No pending Easypaisa payments.</p>'
+    : '';
+  document.querySelectorAll('.payment-review').forEach(button=>{
+    button.onclick=()=>reviewEasypaisaPayment(button.dataset.id,button.dataset.approve==='true');
+  });
+}
+
+async function reviewEasypaisaPayment(paymentId,approve){
+  if(!requireAdmin())return;
+  try{
+    const {error}=await state.supabase.rpc('review_easypaisa_payment',{
+      p_payment_id:paymentId,
+      p_approve:approve
+    });
+    if(error)throw error;
+    await loadSupabaseData();
+    toast(approve?'Payment verified and exact amount credited.':'Payment rejected.');
+  }catch(error){
+    toast(error.message,'error');
+  }
 }
 
 function setAuthTab(mode) {
@@ -489,7 +640,8 @@ async function loadProfile(userId) {
     .single();
   if (error) throw error;
   state.profile = data;
-  state.isAdmin = data.role === 'admin';
+  const allowlisted=ADMIN_EMAILS.some(email=>email.toLowerCase()===String(state.session?.user?.email||'').toLowerCase());
+  state.isAdmin = data.role === 'admin'||allowlisted;
   state.activeUserId = userId;
   state.users = [data];
 }
@@ -497,26 +649,48 @@ async function loadProfile(userId) {
 async function applyAuthenticatedSession(session) {
   state.session = session;
   if (!session?.user) {
+    state.sessionUserId=null;
+    state.profile=null;
+    state.isAdmin=false;
     $('auth-screen').classList.remove('hidden');
     $('auth-screen').classList.add('grid');
     $('account-info').classList.add('hidden');
     $('logout-btn').classList.add('hidden');
+    applyRoleView();
     return;
   }
-  await loadProfile(session.user.id);
-  await loadSupabaseData();
-  $('auth-screen').classList.add('hidden');
-  $('auth-screen').classList.remove('grid');
-  $('account-info').classList.remove('hidden');
-  $('logout-btn').classList.remove('hidden');
-  renderAuthenticatedAccount();
-  applyRoleView();
+  const userId=session.user.id;
+  if(state.sessionUserId===userId&&state.profile){
+    state.session=session;
+    return;
+  }
+  if(state.sessionLoad?.userId===userId)return state.sessionLoad.promise;
+  state.sessionUserId=userId;
+  const promise=(async()=>{
+    await loadProfile(userId);
+    await loadSupabaseData();
+    $('auth-screen').classList.add('hidden');
+    $('auth-screen').classList.remove('grid');
+    $('account-info').classList.remove('hidden');
+    $('logout-btn').classList.remove('hidden');
+    renderAuthenticatedAccount();
+    applyRoleView();
+  })();
+  state.sessionLoad={userId,promise};
+  try{
+    await promise;
+  }catch(error){
+    state.sessionUserId=null;
+    throw error;
+  }finally{
+    if(state.sessionLoad?.promise===promise)state.sessionLoad=null;
+  }
 }
 
 function renderAuthenticatedAccount() {
   if (!state.profile) return;
   $('account-name').textContent = state.profile.full_name || state.profile.email;
-  $('account-wallet').textContent = 'Rs. ' + fmt(state.profile.wallet_balance);
+  $('account-wallet').textContent = 'Rs. ' + fmt(state.profile.paid_balance);
   $('app-user-name').textContent = state.profile.full_name || 'RideaseVX User';
   $('app-user-email').textContent = state.profile.email || state.session?.user?.email || 'Verified driver';
   $('user-avatar').textContent = initials(state.profile.full_name);
@@ -526,8 +700,11 @@ function renderAuthenticatedAccount() {
 function applyRoleView() {
   const adminModeButton = document.querySelector('[data-mode="admin"]');
   if (adminModeButton) adminModeButton.classList.toggle('hidden', !state.isAdmin);
+  $('admin-panel').classList.toggle('hidden',!state.isAdmin||state.mode==='mobile');
   if (!state.isAdmin) {
     setViewMode('mobile');
+  }else{
+    setViewMode(state.mode==='mobile'?'mobile':'split');
   }
 }
 
@@ -535,13 +712,15 @@ async function logout(signOutFromSupabase = true) {
   await stopQrScanner();
   if (signOutFromSupabase && state.supabase) await state.supabase.auth.signOut();
   state.session = null;
+  state.sessionUserId=null;
   state.profile = null;
   state.isAdmin = false;
   $('auth-screen').classList.remove('hidden');
   $('auth-screen').classList.add('grid');
   $('account-info').classList.add('hidden');
   $('logout-btn').classList.add('hidden');
-  document.querySelector('[data-mode="admin"]')?.classList.remove('hidden');
+  document.querySelector('[data-mode="admin"]')?.classList.add('hidden');
+  $('admin-panel').classList.add('hidden');
 }
 
 async function openQrScanner() {
@@ -594,6 +773,7 @@ async function stopQrScanner() {
 }
 
 function openQrModal(chargerId) {
+  if (!requireAdmin()) return;
   if (!window.QRCode) return toast('QR Code library could not load', 'error');
   const charger = state.chargers.find(c => c.id === chargerId);
   if (!charger) return;
@@ -619,6 +799,7 @@ function closeQrModal() {
 }
 
 function downloadQrPng() {
+  if (!requireAdmin()) return;
   const canvas = $('qr-code').querySelector('canvas');
   const image = $('qr-code').querySelector('img');
   const url = canvas ? canvas.toDataURL('image/png') : image?.src;
@@ -630,6 +811,7 @@ function downloadQrPng() {
 }
 
 function printQr() {
+  if (!requireAdmin()) return;
   const canvas = $('qr-code').querySelector('canvas');
   const image = $('qr-code').querySelector('img');
   const src = canvas ? canvas.toDataURL('image/png') : image?.src;
@@ -648,7 +830,6 @@ function bindProductionUI() {
   $('close-qr').onclick = closeQrModal;
   $('download-qr').onclick = downloadQrPng;
   $('print-qr').onclick = printQr;
-  $('topup').onclick = topUp;
 }
 
 async function productionInit() {
@@ -658,6 +839,10 @@ async function productionInit() {
   setInterval(updateClock, 1000);
   updateClock();
   setupInstallSupport();
+  renderEasypaisaDetails();
+  syncPaymentAmount();
+  $('admin-panel').classList.add('hidden');
+  document.querySelector('[data-mode="admin"]').classList.add('hidden');
   $('auth-screen').classList.remove('hidden');
   $('auth-screen').classList.add('grid');
   setAuthTab('login');
@@ -720,7 +905,13 @@ function setupInstallSupport() {
 async function connectProductionSupabase(url, key) {
   try {
     state.supabase = window.supabase.createClient(url, key, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce',
+        storageKey: `rideasevx-${new URL(url).hostname}-auth-token`
+      }
     });
     state.configured = true;
     state.demoMode = false;
@@ -730,12 +921,18 @@ async function connectProductionSupabase(url, key) {
     $('backend-status').className = 'text-xs font-mono text-emerald-400';
     $('backend-dot').className = 'relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 status-dot';
 
-    state.supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'TOKEN_REFRESHED') {
-        setTimeout(() => applyAuthenticatedSession(session).catch(error => toast(error.message, 'error')), 0);
+    state.authSubscription?.unsubscribe();
+    const {data:{subscription}}=state.supabase.auth.onAuthStateChange((event, session) => {
+      if(event==='TOKEN_REFRESHED'){
+        state.session=session;
+        return;
+      }
+      if(event==='SIGNED_IN'){
+        setTimeout(()=>applyAuthenticatedSession(session).catch(error=>toast(error.message,'error')),0);
       }
       if (event === 'SIGNED_OUT') setTimeout(() => logout(false), 0);
     });
+    state.authSubscription=subscription;
 
     const { data: { session } } = await state.supabase.auth.getSession();
     if (session) await applyAuthenticatedSession(session);
