@@ -8,7 +8,9 @@ const AUTH_REDIRECT_URL = 'https://mir63059.github.io/voltsync-ev/';
 const EASYPAISA_ACCOUNT_TITLE = 'YOUR_EASYPAISA_ACCOUNT_TITLE';
 const EASYPAISA_ACCOUNT_NUMBER = '03XX-XXXXXXX';
 const EASYPAISA_QR_IMAGE = './easypaisa-qr.png';
-const ADMIN_EMAILS = ['your-admin-email@example.com'];
+const OWNER_ADMIN_EMAIL = 'mir.63059@iqra.edu.pk';
+const isOwnerEmail = email => String(email || '').trim().toLowerCase() === OWNER_ADMIN_EMAIL.toLowerCase();
+const hasOwnerAdminAccess = () => isOwnerEmail(state.session?.user?.email);
 // Never place a Supabase secret/service-role key in this file.
 
 const DEMO_USERS = [
@@ -129,10 +131,11 @@ async function connectSupabase(url,key,notify=true){
 async function loadSupabaseData(){
   if(!state.configured) return;
   const sb=state.supabase;
-  const isAdmin = state.isAdmin;
-  const profilesRequest = state.session && isAdmin
+  const requestedUserId=state.session?.user?.id||null;
+  const isAdmin = hasOwnerAdminAccess();
+  const profilesRequest = state.session
   ? sb.from('profiles').select('id,email,full_name,phone,role,paid_balance,total_sessions,created_at').order('full_name')
-  : Promise.resolve({data:state.profile?[state.profile]:[],error:null});
+  : Promise.resolve({data:[],error:null});
   let sessionsQuery=state.session
   ? sb.from('sessions').select('*')
   : null;
@@ -150,12 +153,23 @@ async function loadSupabaseData(){
   sessionsRequest,
   paymentsRequest
   ]);
-  if(chargers.error||settings.error||profiles.error||sessions.error||payments.error) throw chargers.error||settings.error||profiles.error||sessions.error||payments.error;
-  if(chargers.data?.length) state.chargers=chargers.data;
-  if(settings.data) state.tariff=Number(settings.data.unit_rate_pkr);
-  state.users=profiles.data||[];
-  state.sessions=sessions.data||[];
-  state.paymentRequests=payments.data||[];
+  if(requestedUserId!==(state.session?.user?.id||null))return;
+  if(chargers.error)toast(`Stations could not be loaded: ${chargers.error.message}`,'error');
+  else if(chargers.data?.length) state.chargers=chargers.data;
+  if(settings.error)toast(`Tariff could not be loaded: ${settings.error.message}`,'error');
+  else if(settings.data) state.tariff=Number(settings.data.unit_rate_pkr);
+  if(profiles.error)toast(`Profiles could not be loaded: ${profiles.error.message}`,'error');
+  else if(profiles.data){
+    state.users=profiles.data;
+    const ownProfile=profiles.data.find(profile=>profile.id===requestedUserId);
+    if(ownProfile)state.profile=ownProfile;
+  }
+  if(sessions.error)toast(`Charging sessions could not be loaded: ${sessions.error.message}`,'error');
+  else if(sessions.data)state.sessions=sessions.data;
+  if(payments.error){
+    state.paymentRequests=[];
+    toast(`Payment history is unavailable: ${payments.error.message}`,'error');
+  }else if(payments.data)state.paymentRequests=payments.data;
   syncActiveSession();
   renderAll();
 }
@@ -247,8 +261,8 @@ function setViewMode(mode){
   state.mode=mode; document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
   $('workspace').className=mode==='mobile'?'grid grid-cols-1 lg:grid-cols-12 gap-6':mode==='admin'?'grid grid-cols-1 gap-6':'grid grid-cols-1 lg:grid-cols-12 gap-6';
   $('mobile-panel').className=mode==='admin'?'hidden':'lg:col-span-4 flex justify-center';
-  $('admin-panel').classList.toggle('hidden',mode!=='admin'||!state.isAdmin);
-  if(mode==='split'&&state.isAdmin)$('admin-panel').classList.remove('hidden');
+  $('admin-panel').classList.toggle('hidden',mode!=='admin'||!hasOwnerAdminAccess());
+  if(mode==='split'&&hasOwnerAdminAccess())$('admin-panel').classList.remove('hidden');
 }
 
 function switchMobileTab(tab){
@@ -399,8 +413,8 @@ function renderHistory(){
 }
 
 function renderAdmin(){
-  $('admin-panel').classList.toggle('hidden',!state.isAdmin);
-  if(!state.isAdmin)return;
+  $('admin-panel').classList.toggle('hidden',!hasOwnerAdminAccess());
+  if(!hasOwnerAdminAccess())return;
   const active=state.chargers.filter(c=>c.status==='charging').length; const energy=state.sessions.filter(s=>s.status==='completed').reduce((n,s)=>n+Number(s.energy_kwh||0),0); const revenue=state.sessions.filter(s=>s.status==='completed').reduce((n,s)=>n+Number(s.total_bill_pkr||0),0);
   $('kpi-users').textContent=fmt(state.users.length); $('kpi-boxes').textContent=state.chargers.length; $('kpi-active').textContent=active; $('kpi-energy').textContent=fmt(energy)+' kWh'; $('kpi-revenue').textContent='Rs. '+fmt(revenue); $('kpi-tariff').textContent='Rs. '+fmt(state.tariff); $('tariff-input').value=state.tariff;
   $('telemetry-table').innerHTML=state.chargers.map(c=>{ const u=state.users.find(x=>x.id===c.active_user_id); const st=c.status==='charging'?'text-emerald-400':c.status==='offline'||c.status==='disabled'?'text-slate-500':'text-cyan-400';
@@ -464,7 +478,7 @@ function initials(name) {
 }
 
 function requireAdmin(){
-  if(state.isAdmin&&state.session?.user&&state.configured)return true;
+  if(hasOwnerAdminAccess()&&state.configured)return true;
   toast('Administrator access is required.','error');
   return false;
 }
@@ -484,16 +498,12 @@ function renderEasypaisaDetails(){
   $('easypaisa-qr-help').textContent=isConfiguredEasypaisaAccount()
     ? 'Confirm the account name and amount in Easypaisa before sending.'
     : 'Payments are disabled until you configure your Easypaisa account details.';
-  if(isConfiguredEasypaisaAccount()){
-    image.onerror=()=>{
-      image.classList.add('hidden');
-      $('easypaisa-qr-help').textContent='Add your real payment QR image as easypaisa-qr.png in the project root, or pay using the account details.';
-    };
-    image.onload=()=>image.classList.remove('hidden');
-    image.src=EASYPAISA_QR_IMAGE;
-  }else{
-    image.removeAttribute('src');
-  }
+  image.onerror=()=>{
+    image.classList.add('hidden');
+    $('easypaisa-qr-help').textContent='Add your real payment QR image as easypaisa-qr.png in the project root, or pay using the account details.';
+  };
+  image.onload=()=>image.classList.remove('hidden');
+  image.src=EASYPAISA_QR_IMAGE;
 }
 
 function selectedPaymentAmount(){
@@ -557,7 +567,7 @@ function renderPaymentRequests(){
     .map(request=>`<div class="rounded-lg border border-slate-800 px-3 py-2 text-[11px]"><div class="flex justify-between gap-2"><span>TID ${escapeHtml(request.transaction_id)}</span><strong>Rs. ${fmt(request.paid_amount_pkr)}</strong></div><p class="mt-1 text-slate-400">Status: ${escapeHtml(request.status)}</p></div>`)
     .join('');
   if(!$('payment-review-list'))return;
-  $('payment-review-list').innerHTML=state.isAdmin
+  $('payment-review-list').innerHTML=hasOwnerAdminAccess()
     ? state.paymentRequests.filter(request=>request.status==='pending').map(request=>{
       const owner=state.users.find(user=>user.id===request.user_id);
       return `<div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 p-3 text-xs"><div><strong>Rs. ${fmt(request.paid_amount_pkr)}</strong> · TID <span class="font-mono">${escapeHtml(request.transaction_id)}</span><p class="text-slate-400">${escapeHtml(owner?.email||request.user_id)}</p></div><div class="flex gap-2"><button class="payment-review primary-btn" data-id="${escapeHtml(request.id)}" data-approve="true">Verify &amp; credit</button><button class="payment-review secondary-btn" data-id="${escapeHtml(request.id)}" data-approve="false">Reject</button></div></div>`;
@@ -639,9 +649,9 @@ async function loadProfile(userId) {
     .eq('id', userId)
     .single();
   if (error) throw error;
+  if(state.session?.user?.id!==userId)return;
   state.profile = data;
-  const allowlisted=ADMIN_EMAILS.some(email=>email.toLowerCase()===String(state.session?.user?.email||'').toLowerCase());
-  state.isAdmin = data.role === 'admin'||allowlisted;
+  state.isAdmin = isOwnerEmail(state.session?.user?.email);
   state.activeUserId = userId;
   state.users = [data];
 }
@@ -650,6 +660,7 @@ async function applyAuthenticatedSession(session) {
   state.session = session;
   if (!session?.user) {
     state.sessionUserId=null;
+    state.sessionLoad=null;
     state.profile=null;
     state.isAdmin=false;
     $('auth-screen').classList.remove('hidden');
@@ -664,27 +675,46 @@ async function applyAuthenticatedSession(session) {
     state.session=session;
     return;
   }
-  if(state.sessionLoad?.userId===userId)return state.sessionLoad.promise;
   state.sessionUserId=userId;
+  state.isAdmin=isOwnerEmail(session.user.email);
+  if(state.profile?.id!==userId){
+    state.profile={
+      id:userId,
+      email:session.user.email,
+      full_name:session.user.user_metadata?.full_name||session.user.email,
+      role:'user',
+      paid_balance:0,
+      total_sessions:0
+    };
+  }
+  state.users=[state.profile];
+  state.activeUserId=userId;
+  $('auth-screen').classList.add('hidden');
+  $('auth-screen').classList.remove('grid');
+  $('account-info').classList.remove('hidden');
+  $('logout-btn').classList.remove('hidden');
+  renderAuthenticatedAccount();
+  applyRoleView();
+  switchMobileTab('scan');
+
   const promise=(async()=>{
-    await loadProfile(userId);
-    await loadSupabaseData();
-    $('auth-screen').classList.add('hidden');
-    $('auth-screen').classList.remove('grid');
-    $('account-info').classList.remove('hidden');
-    $('logout-btn').classList.remove('hidden');
-    renderAuthenticatedAccount();
-    applyRoleView();
+    try{
+      await loadProfile(userId);
+      renderAuthenticatedAccount();
+      applyRoleView();
+    }catch(error){
+      toast(`Profile data is unavailable: ${error.message}`,'error');
+    }
+    try{
+      await loadSupabaseData();
+    }catch(error){
+      toast(`App data is unavailable: ${error.message}`,'error');
+    }
   })();
   state.sessionLoad={userId,promise};
-  try{
-    await promise;
-  }catch(error){
-    state.sessionUserId=null;
-    throw error;
-  }finally{
+  promise.finally(()=>{
     if(state.sessionLoad?.promise===promise)state.sessionLoad=null;
-  }
+  });
 }
 
 function renderAuthenticatedAccount() {
@@ -699,9 +729,10 @@ function renderAuthenticatedAccount() {
 
 function applyRoleView() {
   const adminModeButton = document.querySelector('[data-mode="admin"]');
-  if (adminModeButton) adminModeButton.classList.toggle('hidden', !state.isAdmin);
-  $('admin-panel').classList.toggle('hidden',!state.isAdmin||state.mode==='mobile');
-  if (!state.isAdmin) {
+  const isAdmin=hasOwnerAdminAccess();
+  if (adminModeButton) adminModeButton.classList.toggle('hidden', !isAdmin);
+  $('admin-panel').classList.toggle('hidden',!isAdmin||state.mode==='mobile');
+  if (!isAdmin) {
     setViewMode('mobile');
   }else{
     setViewMode(state.mode==='mobile'?'mobile':'split');
@@ -713,6 +744,7 @@ async function logout(signOutFromSupabase = true) {
   if (signOutFromSupabase && state.supabase) await state.supabase.auth.signOut();
   state.session = null;
   state.sessionUserId=null;
+  state.sessionLoad=null;
   state.profile = null;
   state.isAdmin = false;
   $('auth-screen').classList.remove('hidden');

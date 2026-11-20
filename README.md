@@ -10,7 +10,7 @@ A prototype EV charging management SPA with Supabase authentication, realtime st
 4. In Supabase **Authentication → URL Configuration**, set the Site URL to `https://mir63059.github.io/voltsync-ev/` and add `https://mir63059.github.io/voltsync-ev/**` to Redirect URLs.
 5. In **Authentication → Providers → Email**, enable Email/Password authentication.
 6. Run `supabase-easypaisa-migration.sql` in the SQL Editor after `supabase-schema.sql`.
-7. Create an account through the app, then in **Table Editor → profiles**, set that user's `role` column to `admin`.
+7. Admin access is restricted to the single signed-in owner email `mir.63059@iqra.edu.pk`; the migration enforces this in the database as well as the app.
 
 The schema seeds three Karachi stations with example coordinates. Verify and replace these coordinates and station records before using them for real-world directions or operations.
 
@@ -43,22 +43,12 @@ const SUPABASE_ANON_KEY = 'sb_publishable_...';
 const EASYPAISA_ACCOUNT_TITLE = 'Your actual Easypaisa account title';
 const EASYPAISA_ACCOUNT_NUMBER = 'Your actual Easypaisa account number';
 const EASYPAISA_QR_IMAGE = './easypaisa-qr.png';
-const ADMIN_EMAILS = ['your-admin-email@example.com'];
+const OWNER_ADMIN_EMAIL = 'mir.63059@iqra.edu.pk';
 ```
 
 The publishable/anon key is browser-safe with RLS enabled. Copy secret/service-role values only to the ignored `.env` file for backend/server code. Never add `SUPABASE_SECRET_KEY` to `app.js`, `index.html`, or any `NEXT_PUBLIC_*`/browser variable.
 
-Replace the Easypaisa placeholders with your real receiving account and admin email, and add your actual QR image as `easypaisa-qr.png` in the project root. Do not use a generated or unrelated QR code. Promote the admin's profile to `role='admin'` in Supabase; the frontend email list only controls display, while database policies and RPCs enforce permissions.
-
-You can promote the intended administrator in the SQL Editor with:
-
-```sql
-update public.profiles
-set role='admin'
-where email='your-admin-email@example.com';
-```
-
-Replace the example address with the exact account email and confirm the affected row before running it.
+Replace the Easypaisa placeholders with your real receiving account details and add your actual QR image as `easypaisa-qr.png` in the project root. Do not use a generated or unrelated QR code. Admin access is fixed to `mir.63059@iqra.edu.pk`; do not grant admin access by changing a profile role. The migration demotes other profile roles and the database authorization helper checks the signed-in JWT email.
 
 ### Easypaisa and charging SQL rollout
 
@@ -74,7 +64,7 @@ select station_id, count(*) from public.sessions
 where status='active' group by station_id having count(*) > 1;
 ```
 
-Resolve any returned rows manually before applying the migration. In Supabase **Table Editor → profiles**, set only the trusted administrator's `role` to `admin`. Review each payment TID and amount in Easypaisa before approving it in the app. A TID is globally unique in the database, and repeated or already-reviewed requests cannot be credited again.
+Resolve any returned rows manually before applying the migration. The migration sets only the owner profile's role to `admin`, demotes all others to `user`, installs the owner-email authorization helper, and reloads the PostgREST schema cache. Review each payment TID and amount in Easypaisa before approving it in the app. A TID is globally unique in the database, and repeated or already-reviewed requests cannot be credited again.
 
 After the migration adds `budget_pkr`, inspect any pre-existing active sessions:
 

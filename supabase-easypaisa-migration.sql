@@ -55,6 +55,29 @@ begin
 end
 $$;
 
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select auth.uid() is not null
+    and lower(coalesce(auth.jwt()->>'email',''))='mir.63059@iqra.edu.pk';
+$$;
+revoke all on function public.is_admin() from public;
+grant execute on function public.is_admin() to anon, authenticated;
+
+update public.profiles
+set role=case
+  when lower(coalesce(email,''))='mir.63059@iqra.edu.pk' then 'admin'
+  else 'user'
+end
+where role is distinct from case
+  when lower(coalesce(email,''))='mir.63059@iqra.edu.pk' then 'admin'
+  else 'user'
+end;
+
 drop function if exists public.start_charging_session(text);
 create or replace function public.start_charging_session(
   p_station_id text,
@@ -440,3 +463,5 @@ begin
 exception when duplicate_object then null;
 end
 $$;
+
+notify pgrst, 'reload schema';

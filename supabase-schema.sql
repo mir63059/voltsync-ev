@@ -140,10 +140,8 @@ stable
 security definer
 set search_path = ''
 as $$
-  select exists (
-    select 1 from public.profiles
-    where id = (select auth.uid()) and role = 'admin'
-  );
+  select auth.uid() is not null
+    and lower(coalesce(auth.jwt()->>'email',''))='mir.63059@iqra.edu.pk';
 $$;
 revoke all on function public.is_admin() from public;
 grant execute on function public.is_admin() to anon, authenticated;
