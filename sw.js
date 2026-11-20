@@ -1,15 +1,16 @@
 'use strict';
 
-const CACHE_NAME = 'rideasevx-shell-v5';
+const CACHE_NAME = 'rideasevx-shell-v6';
 const APP_SHELL = [
   './',
   './index.html',
-  './app.js',
+  './app.js?v=6',
   './style.css',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  './icons/apple-touch-icon.png'
+  './icons/apple-touch-icon.png',
+  './easypaisa-qr.png'
 ];
 
 self.addEventListener('install', event => {
