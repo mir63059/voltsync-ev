@@ -40,15 +40,15 @@ Edit the browser-safe constants at the top of `app.js`:
 ```js
 const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_...';
-const EASYPAISA_ACCOUNT_TITLE = 'Your actual Easypaisa account title';
-const EASYPAISA_ACCOUNT_NUMBER = 'Your actual Easypaisa account number';
+const EASYPAISA_ACCOUNT_TITLE = 'Jahandad Dad';
+const EASYPAISA_ACCOUNT_NUMBER = '03423715266';
 const EASYPAISA_QR_IMAGE = './easypaisa-qr.png';
 const OWNER_ADMIN_EMAIL = 'mir.63059@iqra.edu.pk';
 ```
 
 The publishable/anon key is browser-safe with RLS enabled. Copy secret/service-role values only to the ignored `.env` file for backend/server code. Never add `SUPABASE_SECRET_KEY` to `app.js`, `index.html`, or any `NEXT_PUBLIC_*`/browser variable.
 
-Replace the Easypaisa placeholders with your real receiving account details and add your actual QR image as `easypaisa-qr.png` in the project root. Do not use a generated or unrelated QR code. Admin access is fixed to `mir.63059@iqra.edu.pk`; do not grant admin access by changing a profile role. The migration demotes other profile roles and the database authorization helper checks the signed-in JWT email.
+The supplied Easypaisa QR is fixed at Rs. 500. For other amounts, users should send the exact amount directly to the account number and enter the matching paid amount and TID. Every request remains pending until an administrator verifies it. Admin access is fixed to `mir.63059@iqra.edu.pk`; do not grant admin access by changing a profile role. The migration demotes other profile roles and the database authorization helper checks the signed-in JWT email.
 
 ### Easypaisa and charging SQL rollout
 

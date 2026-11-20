@@ -5,9 +5,9 @@
 const SUPABASE_URL = 'https://atucbucsqqtadfgzowiy.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_2ShhTVhq7BKaEezETih2jg_xbTa3ggf';
 const AUTH_REDIRECT_URL = 'https://mir63059.github.io/voltsync-ev/';
-const EASYPAISA_ACCOUNT_TITLE = 'Jahandad Khan';
+const EASYPAISA_ACCOUNT_TITLE = 'Jahandad Dad';
 const EASYPAISA_ACCOUNT_NUMBER = '03423715266';
-const EASYPAISA_QR_IMAGE = '';
+const EASYPAISA_QR_IMAGE = './easypaisa-qr.png';
 const OWNER_ADMIN_EMAIL = 'mir.63059@iqra.edu.pk';
 const isOwnerEmail = email => String(email || '').trim().toLowerCase() === OWNER_ADMIN_EMAIL.toLowerCase();
 const hasOwnerAdminAccess = () => isOwnerEmail(state.session?.user?.email);
@@ -498,7 +498,7 @@ function renderEasypaisaDetails(){
   $('easypaisa-qr-help').textContent=!isConfiguredEasypaisaAccount()
     ? 'Payments are disabled until you configure your Easypaisa account details.'
     : EASYPAISA_QR_IMAGE
-      ? 'Confirm the account name and amount in Easypaisa before sending.'
+      ? 'This QR is fixed at Rs. 500. For other amounts, pay directly to the account number. Confirm the recipient and exact amount before sending.'
       : 'No compatible QR is configured. Send the exact amount to this account number; TIDs are credited only after manual verification.';
   if(!EASYPAISA_QR_IMAGE)return;
   image.onerror=()=>{
