@@ -169,7 +169,7 @@ header.app-header { background-color: rgba(5,10,22,.82); box-shadow: 0 12px 30px
   font-size: 32px; font-weight: 900; box-shadow: 0 16px 40px -10px rgba(16,185,129,.7);
   animation: splashIn .45s var(--rv-ease) both;
 }
-.splash-bike { width: min(280px, 72vw); height: auto; overflow: visible; animation: bikeIn .6s .12s var(--rv-ease) both; }
+.splash-photo { width: min(300px, 80vw); aspect-ratio: 3 / 2; object-fit: cover; border-radius: 20px; border: 1px solid rgba(52,211,153,.35); box-shadow: 0 24px 60px -20px rgba(16,185,129,.55); animation: photoIn .6s .12s var(--rv-ease) both; }
 .splash-name { font-size: 1.35rem; font-weight: 800; letter-spacing: .02em; animation: splashIn .45s .25s var(--rv-ease) both; }
 .splash-tag { font-size: .7rem; color: #94a3b8; letter-spacing: .14em; text-transform: uppercase; animation: splashIn .45s .32s var(--rv-ease) both; }
 @keyframes splashOut {
@@ -177,54 +177,24 @@ header.app-header { background-color: rgba(5,10,22,.82); box-shadow: 0 12px 30px
   100% { opacity: 0; visibility: hidden; transform: scale(1.03); }
 }
 @keyframes splashIn { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
-@keyframes bikeIn { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+@keyframes photoIn { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
 
-/* Shared EV bike illustration parts */
-.rv-wheel { transform-box: fill-box; transform-origin: center; }
-.splash .rv-wheel { animation: rvSpin .9s linear infinite; }
-@keyframes rvSpin { to { transform: rotate(360deg); } }
-.rv-pulse { stroke-dasharray: 14 100; stroke-dashoffset: 14; stroke-linecap: round; animation: energyRun .5s .45s ease-out both; }
-@keyframes energyRun { to { stroke-dashoffset: -100; } }
-.rv-spark { transform-box: fill-box; transform-origin: center; animation: sparkPop .4s .6s var(--rv-ease) both; }
-@keyframes sparkPop { from { opacity: 0; transform: scale(.2); } to { opacity: 1; transform: none; } }
-
-/* Start / Stop charging micro-animations (overlay over the live meter) */
-.charge-fx {
-  position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; align-content: center; gap: .25rem;
-  padding: 1rem; border-radius: 1rem; background: rgba(3,7,18,.92);
-  visibility: hidden; opacity: 0; pointer-events: none;
-}
-.charge-fx svg { width: min(300px, 100%); height: auto; overflow: visible; }
-.charge-fx-text { font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #6ee7b7; }
-.charge-fx-text { display: grid; justify-items: center; }
+/* Charging status card: photo hero, text status below it (normal flow, never overlays metrics) */
+.charge-fx { border-radius: 1rem; overflow: hidden; border: 1px solid var(--rv-line-strong); background: var(--rv-surface); }
+.charge-photo-wrap { position: relative; aspect-ratio: 4 / 3; }
+.charge-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 70%; display: block; }
+.charge-photo-wrap::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; box-shadow: inset 0 0 0 3px rgba(52,211,153,.9), inset 0 0 40px rgba(16,185,129,.45); }
+.charge-fx.is-connect .charge-photo-wrap::after { animation: fxRing var(--fx-ms, 850ms) ease-out both; }
+.charge-fx.is-unplug .charge-photo { animation: fxDim var(--fx-ms, 720ms) ease-in both; }
+@keyframes fxRing { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes fxDim { from { filter: none; } to { filter: brightness(.6) saturate(.7); } }
+.charge-fx-text { display: grid; justify-items: center; min-height: 2.25rem; padding: .6rem .75rem; font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #6ee7b7; }
 .charge-fx-text span { grid-area: 1 / 1; opacity: 0; white-space: nowrap; transition: opacity .2s ease; }
-.charge-fx.is-connect .fx-connect, .charge-fx.is-unplug .fx-unplug { opacity: 1; }
-.charge-fx.is-connect.is-confirmed .fx-connect, .charge-fx.is-unplug.is-confirmed .fx-unplug { opacity: 0; }
-.charge-fx.is-connect.is-confirmed .fx-started, .charge-fx.is-unplug.is-confirmed .fx-stopped { opacity: 1; }
-.charge-fx.is-connect { animation: fxConnect var(--fx-ms, 1000ms) ease-out forwards; }
-.charge-fx.is-unplug { animation: fxUnplug var(--fx-ms, 850ms) ease-in forwards; }
-@keyframes fxConnect {
-  0% { opacity: 0; visibility: visible; }
-  12%, 82% { opacity: 1; visibility: visible; }
-  100% { opacity: 0; visibility: hidden; }
-}
-@keyframes fxUnplug {
-  0% { opacity: 0; visibility: visible; }
-  14%, 70% { opacity: 1; visibility: visible; }
-  100% { opacity: 0; visibility: hidden; }
-}
-.charge-fx.is-connect .rv-wheel, .charge-fx.is-unplug .rv-wheel { animation: rvSpin .7s linear both; }
-.charge-fx.is-connect .rv-plug { animation: plugIn .42s var(--rv-ease) .08s both; }
-.charge-fx.is-unplug .rv-plug { animation: plugOut .36s ease-in .06s both; }
-.charge-fx .rv-fx-pulse { transform-box: fill-box; transform-origin: center; opacity: 0; }
-.charge-fx.is-connect .rv-fx-pulse { animation: fxPulse .36s ease-out .46s both; }
-.charge-fx.is-unplug .rv-fx-pulse { animation: fxPulse .3s ease-out .02s both; }
-@keyframes plugIn { from { transform: translate(56px, -34px); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes plugOut { from { transform: none; opacity: 1; } to { transform: translate(56px, -34px); opacity: 0; } }
-@keyframes fxPulse { from { opacity: .9; transform: scale(.6); } to { opacity: 0; transform: scale(3.4); } }
+.charge-fx[data-state="connect"] .fx-connect, .charge-fx[data-state="unplug"] .fx-unplug,
+.charge-fx[data-state="started"] .fx-started, .charge-fx[data-state="stopped"] .fx-stopped { opacity: 1; }
+.charge-fx[data-state="unplug"] .charge-fx-text, .charge-fx[data-state="stopped"] .charge-fx-text { color: #94a3b8; }
 
 /* Respect reduced-motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
-  .charge-fx.is-connect, .charge-fx.is-unplug { animation: none; visibility: visible; opacity: 1; }
 }

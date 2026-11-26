@@ -22,23 +22,7 @@
   <div id="splash" class="splash" aria-hidden="true">
     <div class="splash-inner">
       <div class="splash-mark">⚡</div>
-      <svg class="splash-bike" viewBox="0 0 320 150" focusable="false" fill="none" stroke-linecap="round" stroke-linejoin="round">
-        <ellipse cx="160" cy="137" rx="136" ry="4" fill="#10b981" opacity=".16" stroke="none"/>
-        <path d="M44 84L92 68L150 62L196 58L226 50L268 68L284 84L272 94L236 90L204 98L160 102L122 98L90 94L48 92Z" fill="#0b1426" stroke="#34d399" stroke-width="2.2" stroke-linejoin="miter"/>
-        <path d="M118 66L178 60" stroke="#6ee7b7" stroke-width="1.5" opacity=".35"/>
-        <path d="M226 50L240 66L206 66Z" fill="#0f1b33" stroke="#22d3ee" stroke-width="1.2" opacity=".7"/>
-        <path d="M262 74L282 82" stroke="#a7f3d0" stroke-width="3.5"/>
-        <path d="M46 84L56 82" stroke="#f87171" stroke-width="3"/>
-        <path d="M112 96H206" stroke="#10b981" stroke-width="3" opacity=".55"/>
-        <path class="rv-pulse" pathLength="100" d="M112 96H206" stroke="#6ee7b7" stroke-width="3"/>
-        <path d="M84 114L134 98" stroke="#94a3b8" stroke-width="4"/>
-        <g transform="translate(84 114)"><g class="rv-wheel"><circle r="18" stroke="#1e293b" stroke-width="6"/><circle r="14" stroke="#34d399" stroke-width="1.6"/><path d="M0-14V14M-14 0H14M-9.9-9.9L9.9 9.9M9.9-9.9L-9.9 9.9" stroke="#34d399" stroke-width="1.1" opacity=".6"/><circle r="3" fill="#6ee7b7" stroke="none"/></g></g>
-        <g transform="translate(246 112) scale(1.1)"><g class="rv-wheel"><circle r="18" stroke="#1e293b" stroke-width="6"/><circle r="14" stroke="#34d399" stroke-width="1.6"/><path d="M0-14V14M-14 0H14M-9.9-9.9L9.9 9.9M9.9-9.9L-9.9 9.9" stroke="#34d399" stroke-width="1.1" opacity=".6"/><circle r="3" fill="#6ee7b7" stroke="none"/></g></g>
-        <path d="M246 112L256 66" stroke="#cbd5e1" stroke-width="4"/>
-        <path d="M254 58L262 46L274 46" stroke="#e2e8f0" stroke-width="3.5"/>
-        <rect x="150" y="64" width="20" height="12" rx="3" fill="#0f1b33" stroke="#22d3ee" stroke-width="2"/>
-        <path class="rv-spark" d="M176 34l6-10 1 8 8-2-6 10-1-8z" fill="#6ee7b7" stroke="none"/>
-      </svg>
+      <img class="splash-photo" src="assets/ev-bike-blue.png" alt="Sports EV bike" width="1024" height="682" decoding="async">
       <div class="splash-name">RideaseVX</div>
       <div class="splash-tag">Smart EV Charging</div>
     </div>
@@ -127,24 +111,10 @@
             <div id="tab-charge" class="mobile-tab hidden space-y-3.5">
               <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex justify-between items-center"><div><span id="app-charger-code" class="font-mono text-xs px-2 py-1 rounded bg-slate-800 text-emerald-400">CHG-001</span><h3 id="app-charger-name" class="text-sm font-bold mt-1">Main Gate Fast Charger</h3><p id="app-charger-loc" class="text-[11px] text-slate-400">Karachi Station 1</p></div><button id="change-charger" class="text-xs text-slate-400 underline">Change</button></div>
               <div id="meter-box" class="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-4"><div class="flex justify-between mb-2"><div><span class="text-[10px] uppercase text-slate-400">Vehicle battery</span><div><span id="battery-pct" class="text-3xl font-extrabold font-mono">--</span><span id="battery-unit" class="hidden text-sm text-emerald-400">%</span></div></div><div class="text-right"><span class="text-[10px] uppercase text-slate-400">Duration</span><div id="session-duration" class="font-mono font-bold">00:00:00</div></div></div><div class="h-3 bg-slate-950 rounded-full p-0.5"><div id="battery-bar" class="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all" style="width:0%"></div></div><p class="mt-2 text-[10px] text-slate-500">Battery percentage needs a separate vehicle sensor; this meter reads charger input.</p>
-                <div id="charge-fx" class="charge-fx" aria-hidden="true">
-                  <svg viewBox="0 0 320 150" focusable="false" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                    <ellipse cx="160" cy="137" rx="136" ry="4" fill="#10b981" opacity=".16" stroke="none"/>
-                    <path d="M44 84L92 68L150 62L196 58L226 50L268 68L284 84L272 94L236 90L204 98L160 102L122 98L90 94L48 92Z" fill="#0b1426" stroke="#34d399" stroke-width="2.2" stroke-linejoin="miter"/>
-                    <path d="M226 50L240 66L206 66Z" fill="#0f1b33" stroke="#22d3ee" stroke-width="1.2" opacity=".7"/>
-                    <path d="M262 74L282 82" stroke="#a7f3d0" stroke-width="3.5"/>
-                    <path d="M46 84L56 82" stroke="#f87171" stroke-width="3"/>
-                    <path d="M84 114L134 98" stroke="#94a3b8" stroke-width="4"/>
-                    <g transform="translate(84 114)"><g class="rv-wheel"><circle r="18" stroke="#1e293b" stroke-width="6"/><circle r="14" stroke="#34d399" stroke-width="1.6"/><path d="M0-14V14M-14 0H14M-9.9-9.9L9.9 9.9M9.9-9.9L-9.9 9.9" stroke="#34d399" stroke-width="1.1" opacity=".6"/><circle r="3" fill="#6ee7b7" stroke="none"/></g></g>
-                    <g transform="translate(246 112) scale(1.1)"><g class="rv-wheel"><circle r="18" stroke="#1e293b" stroke-width="6"/><circle r="14" stroke="#34d399" stroke-width="1.6"/><path d="M0-14V14M-14 0H14M-9.9-9.9L9.9 9.9M9.9-9.9L-9.9 9.9" stroke="#34d399" stroke-width="1.1" opacity=".6"/><circle r="3" fill="#6ee7b7" stroke="none"/></g></g>
-                    <path d="M246 112L256 66" stroke="#cbd5e1" stroke-width="4"/>
-                    <path d="M254 58L262 46L274 46" stroke="#e2e8f0" stroke-width="3.5"/>
-                    <rect x="150" y="64" width="20" height="12" rx="3" fill="#0f1b33" stroke="#22d3ee" stroke-width="2"/>
-                    <circle class="rv-fx-pulse" cx="160" cy="70" r="12" stroke="#34d399" stroke-width="3"/>
-                    <g class="rv-plug"><rect x="150" y="64" width="20" height="12" rx="3" fill="#6ee7b7"/><rect x="170" y="68" width="8" height="4" rx="1.5" fill="#a7f3d0"/></g>
-                  </svg>
-                  <p class="charge-fx-text"><span class="fx-connect">Connecting EV…</span><span class="fx-started">Charging started</span><span class="fx-unplug">Unplugging…</span><span class="fx-stopped">Charging stopped</span></p>
-                </div>
+              </div>
+              <div id="charge-fx" class="charge-fx" data-state="" aria-live="polite">
+                <div class="charge-photo-wrap"><img class="charge-photo" src="assets/ev-charging-station.png" alt="EV charging station with a connected sports EV bike" width="447" height="447" decoding="async"></div>
+                <p class="charge-fx-text"><span class="fx-connect">Connecting EV…</span><span class="fx-started">Charging started</span><span class="fx-unplug">Unplugging…</span><span class="fx-stopped">Charging stopped</span></p>
               </div>
               <p id="telemetry-status" class="hidden text-[10px] text-amber-300" aria-live="polite"></p>
               <div class="grid grid-cols-2 gap-2.5"><div class="metric-card"><span>Voltage</span><b id="voltage">0.0 V</b></div><div class="metric-card"><span>Current</span><b id="current">0.0 A</b></div><div class="metric-card"><span>Consumed</span><b id="kwh">0.000 kWh</b></div><div class="metric-card border-emerald-500/30"><span>Live Bill</span><b id="bill" class="text-emerald-400">Rs. 0.0</b></div></div>
@@ -225,6 +195,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>

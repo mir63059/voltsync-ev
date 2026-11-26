@@ -908,14 +908,21 @@ function selectCharger(id) {
   switchMobileTab('charge');
 }
 
-const CHARGE_FX_MS = { connect: 1000, unplug: 850 };
+const CHARGE_FX_MS = { connect: 850, unplug: 720 };
 let chargeFxTimer = null;
 
+// Clears only the animation class and timer; the status text (data-state) is left for settleChargeFx/resetChargeFx.
 function clearChargeFx() {
   clearTimeout(chargeFxTimer);
   chargeFxTimer = null;
   const fx = $('charge-fx');
-  if (fx) fx.classList.remove('is-connect', 'is-unplug', 'is-confirmed');
+  if (fx) fx.classList.remove('is-connect', 'is-unplug');
+}
+
+function resetChargeFx() {
+  clearChargeFx();
+  const fx = $('charge-fx');
+  if (fx) fx.dataset.state = '';
 }
 
 function playChargeFx(kind) {
@@ -926,15 +933,15 @@ function playChargeFx(kind) {
   clearChargeFx();
   void fx.offsetWidth;
   fx.style.setProperty('--fx-ms', `${ms}ms`);
+  fx.dataset.state = kindKey;
   fx.classList.add(kindKey === 'unplug' ? 'is-unplug' : 'is-connect');
   chargeFxTimer = setTimeout(clearChargeFx, ms + 50);
 }
 
-function confirmChargeFx() {
+function settleChargeFx(finalState) {
+  clearChargeFx();
   const fx = $('charge-fx');
-  if (fx && (fx.classList.contains('is-connect') || fx.classList.contains('is-unplug'))) {
-    fx.classList.add('is-confirmed');
-  }
+  if (fx) fx.dataset.state = finalState === 'stopped' ? 'stopped' : 'started';
 }
 
 async function toggleCharging() {
@@ -960,12 +967,12 @@ async function toggleCharging() {
       p_budget_pkr: budget
     });
     if (error) throw error;
-    confirmChargeFx();
+    settleChargeFx('started');
     await loadSupabaseData();
     if ($('payment-message')) $('payment-message').textContent = '';
     toast(`Charging started with a maximum spend of Rs. ${fmt(budget)}.`);
   } catch (error) {
-    clearChargeFx();
+    resetChargeFx();
     toast(error.message, 'error');
   } finally {
     if ($('toggle-charge')) $('toggle-charge').disabled = false;
@@ -985,12 +992,12 @@ async function stopCharging(reason, notification = null) {
       p_reason: reason || 'User stopped session'
     });
     if (error) throw error;
-    confirmChargeFx();
+    settleChargeFx('stopped');
     await loadSupabaseData();
     const billed = Number(data?.bill_pkr || 0);
     toast(notification || `Charging stopped • Rs. ${fmt(billed)} used; unused balance returned.`);
   } catch (error) {
-    clearChargeFx();
+    resetChargeFx();
     toast(error.message, 'error');
   } finally {
     if (state.settlingSessionId === session.id) state.settlingSessionId = null;
@@ -1058,6 +1065,9 @@ function updateChargingMeter() {
 function renderChargingControls() {
   const active = state.activeDbSession;
   const btn = $('toggle-charge');
+  const fx = $('charge-fx');
+  // A "started" message is stale once the session ends remotely; settling sessions keep their message.
+  if (fx && !active && !state.settlingSessionId && fx.dataset.state === 'started') fx.dataset.state = '';
   if (!btn) return;
   btn.textContent = active ? '■ STOP CHARGING' : '⚡ START CHARGING';
   btn.classList.toggle('bg-red-500', Boolean(active));

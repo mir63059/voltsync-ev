@@ -1,13 +1,15 @@
 'use strict';
 
-const CACHE_NAME = 'rideasevx-shell-v14';
+const CACHE_NAME = 'rideasevx-shell-v15';
 const APP_SHELL = [
   './',
   './index.html',
-  './app.js?v=14',
+  './app.js?v=15',
   './style.css',
   './manifest.json',
   './easypaisa-qr.png',
+  './assets/ev-bike-blue.png',
+  './assets/ev-charging-station.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png'
