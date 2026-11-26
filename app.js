@@ -249,6 +249,13 @@ async function applySessionState(session) {
     $('account-info')?.classList.remove('hidden');
     $('logout-btn')?.classList.remove('hidden');
     if ($('account-email')) $('account-email').textContent = user.email || '';
+    
+    // Set account name in header - use "Mir Hamid Khan" for owner, otherwise use profile full_name
+    if ($('account-name')) {
+      const displayName = state.isAdmin ? 'Mir Hamid Khan' : (state.profile?.full_name || user.email?.split('@')[0] || 'User');
+      $('account-name').textContent = displayName;
+    }
+    
     if ($('role-badge')) {
       $('role-badge').classList.remove('hidden');
       $('role-badge').textContent = state.isAdmin ? 'ADMIN' : 'USER';
@@ -369,6 +376,7 @@ async function loadSupabaseData() {
     state.users = profiles.data;
     const ownProfile = profiles.data.find(profile => profile.id === requestedUserId);
     if (ownProfile) state.profile = ownProfile;
+    updateHeaderDisplay();
   }
 
   if (sessions.error) toast(`Charging sessions could not be loaded: ${sessions.error.message}`, 'error');
@@ -539,7 +547,52 @@ function bindUI() {
       $('qr-modal')?.classList.remove('grid');
     };
   }
-  if ($('print-qr')) $('print-qr').onclick = () => window.print();
+  if ($('print-qr')) {
+    $('print-qr').onclick = () => {
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        const qrContainer = $('qr-code');
+        const qrImage = qrContainer?.querySelector('img')?.src || qrContainer?.innerHTML || '';
+        const title = $('qr-modal-title')?.textContent || 'QR Code';
+        const details = $('qr-modal-code')?.textContent || '';
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>${title}</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 20px; }
+              h1 { font-size: 18px; margin: 0 0 10px; }
+              p { margin: 5px 0; font-size: 12px; }
+              .qr-container { text-align: center; margin: 20px 0; }
+            </style>
+          </head>
+          <body>
+            <h1>${title}</h1>
+            <p>${details}</p>
+            <div class="qr-container">${qrImage}</div>
+          </body>
+          </html>
+        `);
+        printWindow.document.close();
+        setTimeout(() => printWindow.print(), 250);
+      }
+    };
+  }
+  if ($('download-qr')) {
+    $('download-qr').onclick = () => {
+      const qrContainer = $('qr-code');
+      const canvas = qrContainer?.querySelector('canvas');
+      if (canvas) {
+        const link = document.createElement('a');
+        link.href = canvas.toDataURL('image/png');
+        link.download = `${state.currentQrId || 'qr-code'}.png`;
+        link.click();
+      } else {
+        toast('QR code not ready. Please try again.', 'error');
+      }
+    };
+  }
 }
 
 async function handleAuthSubmit(event) {
@@ -600,6 +653,7 @@ function switchUser(id) {
   if ($('user-avatar') && user) {
     $('user-avatar').textContent = user.initials || initials(user.full_name || 'U');
   }
+  updateHeaderDisplay();
   renderWallet();
   renderHistory();
 }
@@ -613,6 +667,26 @@ function getActiveUser() {
   );
 }
 
+function updateHeaderDisplay() {
+  const user = getActiveUser();
+  if (!user) return;
+  
+  // Update mobile panel display name
+  if ($('app-user-name')) {
+    const displayName = state.isAdmin ? 'Mir Hamid Khan' : (user.full_name || user.email?.split('@')[0] || 'User');
+    $('app-user-name').textContent = displayName;
+  }
+  if ($('app-user-email')) {
+    $('app-user-email').textContent = user.email || 'EV Driver • Verified';
+  }
+  
+  // Update header account name  
+  if ($('account-name')) {
+    const displayName = state.isAdmin ? 'Mir Hamid Khan' : (user.full_name || user.email?.split('@')[0] || 'User');
+    $('account-name').textContent = displayName;
+  }
+}
+
 function renderAll() {
   renderChargerList();
   renderAdmin();
@@ -620,6 +694,7 @@ function renderAll() {
   renderMeter();
   renderHistory();
   renderPaymentRequests();
+  updateHeaderDisplay();
 }
 
 function renderWallet() {
@@ -913,11 +988,41 @@ function renderAdmin() {
 }
 
 function openQrModal(chargerId) {
+  if (!requireAdmin()) return;
   const c = state.chargers.find(x => x.id === chargerId);
   if (!c) return;
+  
   state.currentQrId = c.id;
-  if ($('qr-station-id')) $('qr-station-id').textContent = c.id;
-  if ($('qr-station-name')) $('qr-station-name').textContent = `${c.name} — ${c.location}`;
+  
+  // Update modal title and details
+  if ($('qr-modal-title')) $('qr-modal-title').textContent = `${c.id} QR Code`;
+  if ($('qr-modal-code')) $('qr-modal-code').textContent = `${c.name} • ${c.location}`;
+  
+  // Generate QR code with station data
+  const qrContainer = $('qr-code');
+  if (qrContainer) {
+    qrContainer.innerHTML = '';
+    const qrData = {
+      station_id: c.id,
+      name: c.name,
+      location: c.location,
+      timestamp: new Date().toISOString()
+    };
+    try {
+      new QRCode(qrContainer, {
+        text: JSON.stringify(qrData),
+        width: 256,
+        height: 256,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H
+      });
+    } catch (e) {
+      console.error('QR code generation failed:', e);
+      qrContainer.innerHTML = '<p class="text-red-400 text-xs">QR code generation failed</p>';
+    }
+  }
+  
   if ($('qr-modal')) {
     $('qr-modal').classList.remove('hidden');
     $('qr-modal').classList.add('grid');
