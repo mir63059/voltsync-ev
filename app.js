@@ -1019,8 +1019,9 @@ async function playChargeStartTrack() {
     track.currentTime = 0;
     await track.play();
   } catch (error) {
+    // AbortError means a newer play() superseded this one, so the track is still playing.
     if (error?.name === 'AbortError') return;
-    playSound('start');
+    if (track.paused) playSound('start');
   }
 }
 

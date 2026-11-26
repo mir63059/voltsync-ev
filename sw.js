@@ -1,10 +1,10 @@
 'use strict';
 
-const CACHE_NAME = 'rideasevx-shell-v19';
+const CACHE_NAME = 'rideasevx-shell-v20';
 const APP_SHELL = [
   './',
   './index.html',
-  './app.js?v=18',
+  './app.js?v=19',
   './style.css',
   './manifest.json',
   './easypaisa-qr.png',
@@ -38,6 +38,9 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
+
+  // Media playback sends Range requests that need a 206 partial response; serving the cached full 200 cuts audio short.
+  if (request.headers.has('range')) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(
