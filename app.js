@@ -10,6 +10,9 @@ const EASYPAISA_ACCOUNT_NUMBER = '03423715266';
 const EASYPAISA_QR_IMAGE = './easypaisa-qr.png';
 const OWNER_ADMIN_EMAIL = 'mir.63059@iqra.edu.pk';
 const REALTIME_CHANNEL_NAME = 'rideasevx-live';
+// Must match the 120-second rule in apply_stale_easypaisa_auto_approvals (supabase-easypaisa-migration.sql).
+const EASYPAISA_AUTO_VERIFY_MS = 120000;
+const EASYPAISA_AUTO_VERIFY_POLL_MS = 10000;
 
 const isOwnerEmail = email => String(email || '').trim().toLowerCase() === OWNER_ADMIN_EMAIL.toLowerCase();
 const hasOwnerAdminAccess = () => isOwnerEmail(state.session?.user?.email);
@@ -214,6 +217,7 @@ async function init() {
     state.tick = setInterval(updateChargingMeter, 1000);
   }
   setInterval(updateClock, 1000);
+  setInterval(runAutoVerificationCheck, EASYPAISA_AUTO_VERIFY_POLL_MS);
   updateClock();
 }
 
@@ -552,6 +556,7 @@ function bindUI() {
   if ($('payment-form')) $('payment-form').onsubmit = submitEasypaisaPayment;
   if ($('payment-amount')) $('payment-amount').onchange = syncPaymentAmount;
   if ($('payment-custom-amount')) $('payment-custom-amount').oninput = syncPaymentAmount;
+  if ($('payment-review-list')) $('payment-review-list').onclick = handleAdminPaymentReview;
 
   if ($('budget-select')) {
     $('budget-select').onchange = () => {
@@ -1030,6 +1035,7 @@ function renderHistory() {
 
 function renderAdmin() {
   if (!hasOwnerAdminAccess() || !$('admin-panel')) return;
+  renderAdminPaymentReview();
   const active = (state.chargers || []).filter(c => c.status === 'charging').length;
   const energy = (state.sessions || [])
     .filter(s => s.status === 'completed')
@@ -1339,6 +1345,80 @@ function renderPaymentRequests() {
     const when = request.created_at ? new Date(request.created_at).toLocaleString('en-PK') : '';
     return `<div class="rounded-lg border border-slate-800 bg-slate-900/90 p-3 text-xs"><div class="flex justify-between items-center gap-2"><span class="font-mono text-emerald-400 truncate">${escapeHtml(request.transaction_id || 'TID')}</span><span class="text-[10px] px-2 py-0.5 rounded-full ${badgeClass}">${escapeHtml(request.status || 'pending')}</span></div><div class="mt-1.5 flex justify-between items-center text-slate-300"><b>Rs. ${fmt(amt)}</b><span class="text-[10px] text-slate-500">${escapeHtml(when)}</span></div></div>`;
   }).join('') || '<p class="text-xs text-slate-500">No payment requests yet.</p>';
+}
+
+function renderAdminPaymentReview() {
+  const container = $('payment-review-list');
+  if (!container) return;
+  const items = (state.paymentRequests || []).slice(0, 50);
+
+  container.innerHTML = items.map(request => {
+    const status = String(request.status || 'pending').toLowerCase();
+    const user = (state.users || []).find(u => u.id === request.user_id);
+    const name = user?.full_name || user?.email || String(request.user_id || '').slice(0, 8);
+    const when = request.created_at ? new Date(request.created_at).toLocaleString('en-PK') : '';
+    const createdMs = parseTimestampMs(request.created_at);
+    const autoAt = createdMs === null
+      ? ''
+      : new Date(createdMs + EASYPAISA_AUTO_VERIFY_MS).toLocaleTimeString('en-PK');
+    const badgeClass = status === 'approved'
+      ? 'bg-emerald-500/15 text-emerald-400'
+      : status === 'rejected'
+        ? 'bg-red-500/15 text-red-400'
+        : 'bg-amber-500/15 text-amber-300';
+    const actions = status === 'pending'
+      ? `<div class="mt-2 flex gap-2"><button type="button" class="px-3 py-1 rounded bg-emerald-500/15 text-emerald-300" data-payment-action="approve" data-payment-id="${escapeHtml(request.id)}">Approve</button><button type="button" class="px-3 py-1 rounded bg-red-500/15 text-red-400" data-payment-action="reject" data-payment-id="${escapeHtml(request.id)}">Reject</button></div><p class="mt-1 text-[10px] text-slate-500">Auto-approves at ${escapeHtml(autoAt)} if not reviewed.</p>`
+      : `<p class="mt-1 text-[10px] text-slate-500">${request.verified_method === 'auto' ? 'Auto-verified after 2 minutes' : status === 'approved' ? 'Approved by admin' : 'Rejected by admin'}</p>`;
+
+    return `<div class="rounded-lg border border-slate-800 bg-slate-900/90 p-3 text-xs"><div class="flex justify-between items-center gap-2"><div class="min-w-0"><div class="font-semibold text-slate-100 truncate">${escapeHtml(name)}</div><div class="text-[10px] text-slate-500 truncate">${escapeHtml(user?.email || '')}</div></div><span class="text-[10px] px-2 py-0.5 rounded-full ${badgeClass}">${escapeHtml(status)}</span></div><div class="mt-2 flex justify-between items-center gap-2"><span class="font-mono text-emerald-400 truncate">TID ${escapeHtml(request.transaction_id || '-')}</span><b class="text-slate-100">Rs. ${fmt(request.paid_amount_pkr)}</b></div><div class="text-[10px] text-slate-500">${escapeHtml(when)}</div>${actions}</div>`;
+  }).join('') || '<p class="text-xs text-slate-500">No Easypaisa payment requests yet.</p>';
+}
+
+async function handleAdminPaymentReview(event) {
+  const button = event.target.closest('[data-payment-action]');
+  if (!button || !requireAdmin()) return;
+  const approve = button.dataset.paymentAction === 'approve';
+  const request = (state.paymentRequests || []).find(r => r.id === button.dataset.paymentId);
+  if (!request || request.status !== 'pending') {
+    return toast('This payment request has already been reviewed.', 'error');
+  }
+  const amount = fmt(request.paid_amount_pkr);
+  const question = approve
+    ? `Approve TID ${request.transaction_id} and credit exactly Rs. ${amount}?`
+    : `Reject TID ${request.transaction_id} for Rs. ${amount}?`;
+  if (!window.confirm(question)) return;
+
+  button.disabled = true;
+  try {
+    const { error } = await state.supabase.rpc('review_easypaisa_payment', {
+      p_payment_id: request.id,
+      p_approve: approve
+    });
+    if (error) throw error;
+    toast(approve ? `Rs. ${amount} credited to the user's paid balance.` : 'Payment request rejected.');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    button.disabled = false;
+  }
+  await loadSupabaseData();
+}
+
+let autoVerifyBusy = false;
+// Applies the 2-minute auto-approval rule on the server; the RPC is idempotent, so overlapping polls are harmless.
+async function runAutoVerificationCheck() {
+  if (autoVerifyBusy || !state.configured || !state.supabase || !state.session) return;
+  if (!(state.paymentRequests || []).some(r => r.status === 'pending')) return;
+  autoVerifyBusy = true;
+  try {
+    const { data, error } = await state.supabase.rpc('auto_approve_stale_easypaisa_payments');
+    if (error) throw error;
+    if (Number(data) > 0) await loadSupabaseData();
+  } catch (error) {
+    consoleLog({ easypaisa_auto_verify_error: error.message }, 'IN');
+  } finally {
+    autoVerifyBusy = false;
+  }
 }
 
 init();

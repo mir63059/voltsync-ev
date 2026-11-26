@@ -18,7 +18,7 @@ The schema seeds three Karachi stations with example coordinates. Verify and rep
 
 The anon key is public and safe for browser use when RLS policies are enabled. Never expose a Supabase service-role key in `app.js` or any static deployment.
 
-The app never treats a submitted TID or amount as proof of payment. An administrator must verify the transfer in Easypaisa and approve the request; only then does the database credit that exact amount. Charging reserves no more than the verified balance, and the database caps billing at the session budget. Legacy `wallet_balance` values are not spendable.
+The app never treats a submitted TID or amount as proof of payment on its own. An administrator can verify the transfer in Easypaisa and approve or reject the request from the Admin Panel. If a request is still pending after 2 minutes, the database automatically approves it and credits that exact amount once (the rule is enforced server-side in `apply_stale_easypaisa_auto_approvals`, with a polling fallback in the app). Charging reserves no more than the verified balance, and the database caps billing at the session budget. Legacy `wallet_balance` values are not spendable.
 
 The browser never receives a Supabase service-role key or a charger-device token. The included Supabase Edge Function authenticates each device, mirrors PZEM readings, and returns the relay command derived from the active database session. This prototype does not implement a certified EVSE, vehicle pilot signaling, ground-fault protection, overcurrent protection, or an emergency stop. Do not connect a vehicle or mains-voltage relay based on this prototype; use a qualified EVSE design and have the electrical installation inspected by a qualified professional.
 
@@ -139,7 +139,7 @@ Admins can open **View / Print QR** in the telemetry table. The QR content is JS
 
 Older QR codes containing `charger_id` are still accepted. Users click **Open Camera to Scan QR**. The camera requires browser camera permission and an HTTPS deployment.
 
-Easypaisa requests remain pending until an administrator verifies them. A charging budget is reserved from the verified paid balance; unused reservation is returned when the session is settled.
+Easypaisa requests remain pending until an administrator approves or rejects them, or until they are auto-approved after 2 minutes. A charging budget is reserved from the verified paid balance; unused reservation is returned when the session is settled.
 
 ## 9. ESP32 connection and live meter
 
