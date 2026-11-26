@@ -1,4 +1,4 @@
-/* RideaseVX — demo mode + Supabase v2 integration */
+﻿/* RideaseVX — demo mode + Supabase v2 integration */
 'use strict';
 
 // Browser-safe Supabase configuration for the deployed app.
@@ -1167,8 +1167,7 @@ function selectedPaymentAmount() {
   }
   return cents;
 }
-
-function syncPaymentAmount() {
+ function syncPaymentAmount() {
   const isCustom = $('payment-amount')?.value === 'custom';
   $('payment-custom-amount')?.classList.toggle('hidden', !isCustom);
   const amount = selectedPaymentAmount();
