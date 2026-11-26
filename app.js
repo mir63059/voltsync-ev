@@ -218,9 +218,7 @@ async function init() {
   if (!state.tick) {
     state.tick = setInterval(updateChargingMeter, 1000);
   }
-  setInterval(updateClock, 1000);
   setInterval(runAutoVerificationCheck, EASYPAISA_AUTO_VERIFY_POLL_MS);
-  updateClock();
 }
 
 function setDemoMode() {
@@ -797,7 +795,7 @@ function renderChargerList() {
           : 'Available';
     const unavailable = status === 'Offline' || status === 'Disabled';
     const color = status === 'Charging' ? 'text-emerald-400' : unavailable ? 'text-slate-500' : 'text-cyan-400';
-    return `<button data-charge-id="${escapeHtml(c.id)}" class="charger-row w-full text-left bg-slate-900/90 border border-slate-800 hover:border-emerald-500/40 rounded-xl p-3 flex justify-between items-center ${unavailable ? 'opacity-60' : ''}"><div><div class="flex gap-2"><span class="font-mono text-xs font-bold text-emerald-400">${escapeHtml(c.id)}</span><span class="text-[10px] ${color}">${status}</span></div><div class="text-xs font-semibold mt-1">${escapeHtml(c.name)}</div><div class="text-[10px] text-slate-400">${escapeHtml(c.location)} • ${fmt(state.tariff)} PKR/kWh</div></div><span class="text-slate-500">›</span></button>`;
+    return `<button data-charge-id="${escapeHtml(c.id)}" class="charger-row w-full text-left bg-slate-900/90 border border-slate-800 hover:border-emerald-500/40 rounded-xl p-3 flex justify-between items-center ${unavailable ? 'opacity-60' : ''}"><div><div class="flex gap-2"><span class="font-mono text-xs font-bold text-emerald-400">${escapeHtml(c.id)}</span><span class="status-badge text-[10px] ${color}">${status}</span></div><div class="text-xs font-semibold mt-1">${escapeHtml(c.name)}</div><div class="text-[10px] text-slate-400">${escapeHtml(c.location)} • ${fmt(state.tariff)} PKR/kWh</div></div><span class="text-slate-500">›</span></button>`;
   }).join('') || '<p class="text-xs text-slate-500">No chargers configured</p>';
 
   document.querySelectorAll('.charger-row').forEach(btn => {
@@ -1044,7 +1042,7 @@ function renderHistory() {
   const userId = state.session?.user?.id || getActiveUser()?.id;
   const sessions = (state.sessions || []).filter(s => s.user_id === userId);
   if ($('history-count')) $('history-count').textContent = sessions.length + ' Sessions';
-  list.innerHTML = sessions.slice(0, 20).map(s => `<div class="bg-slate-900 border border-slate-800 rounded-xl p-3"><div class="flex justify-between"><span class="font-mono text-xs text-emerald-400">${escapeHtml(s.session_code || 'SESSION')}</span><span class="text-[10px] px-2 py-0.5 rounded-full ${s.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-800 text-slate-400'}">${escapeHtml(s.status)}</span></div><div class="mt-2 flex justify-between text-xs"><span>${escapeHtml(s.station_id || '-')}</span><b class="text-emerald-400">Rs. ${fmt(s.total_bill_pkr || 0)}</b></div><div class="mt-1 text-[10px] text-slate-400">${fmtEnergy(s.energy_kwh || 0)} kWh • ${secondsToHMS(s.duration_seconds || 0)}</div></div>`).join('') || '<div class="text-xs text-slate-500 text-center py-8">No charging sessions yet</div>';
+  list.innerHTML = sessions.slice(0, 20).map(s => `<div class="bg-slate-900 border border-slate-800 rounded-xl p-3"><div class="flex justify-between"><span class="font-mono text-xs text-emerald-400">${escapeHtml(s.session_code || 'SESSION')}</span><span class="status-badge text-[10px] px-2 py-0.5 rounded-full ${s.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-800 text-slate-400'}">${escapeHtml(s.status)}</span></div><div class="mt-2 flex justify-between text-xs"><span>${escapeHtml(s.station_id || '-')}</span><b class="text-emerald-400">Rs. ${fmt(s.total_bill_pkr || 0)}</b></div><div class="mt-1 text-[10px] text-slate-400">${fmtEnergy(s.energy_kwh || 0)} kWh • ${secondsToHMS(s.duration_seconds || 0)}</div></div>`).join('') || '<div class="text-xs text-slate-500 text-center py-8">No charging sessions yet</div>';
 }
 
 function renderAdmin() {
@@ -1213,13 +1211,6 @@ async function adminOverride(id, action) {
     return toast('Unknown admin action.', 'error');
   }
   await loadSupabaseData();
-}
-
-function updateClock() {
-  const el = $('phone-clock');
-  if (!el) return;
-  const d = new Date();
-  el.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 function isConfiguredEasypaisaAccount() {

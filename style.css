@@ -11,7 +11,63 @@
 @keyframes pulseGlow { 0%,100% { box-shadow: 0 0 15px rgba(16,185,129,.22); } 50% { box-shadow: 0 0 28px rgba(16,185,129,.55); } }
 .charging-glow { animation: pulseGlow 2s infinite; }
 .mode-btn.active { background:#10b981 !important; color:#020617 !important; box-shadow:0 8px 20px rgba(16,185,129,.12); }
+.mobile-nav-btn { transition: color .2s ease, background-color .2s ease, transform .15s ease; }
+.mobile-nav-btn:active { transform: scale(.94); }
 .mobile-nav-btn.active { color:#34d399; background:rgba(16,185,129,.10); }
+.view-mode-btn { transition: background-color .2s ease, color .2s ease; }
+.mobile-tab:not(.hidden) { animation: tabIn .22s ease-out; }
+@keyframes tabIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
 .fade-in { animation: fadeIn .25s ease-out; }
 @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
 .status-dot { box-shadow:0 0 10px currentColor; }
+
+/* Base layout: edge-to-edge on phones, natural page scroll, safe areas */
+html { -webkit-text-size-adjust: 100%; }
+body { overflow-x: hidden; }
+header.app-header { padding-top: calc(.75rem + env(safe-area-inset-top)); }
+nav.app-tabbar { padding-bottom: calc(.5rem + env(safe-area-inset-bottom)); }
+h1, h2, h3 { letter-spacing: -.01em; }
+button, .field, .primary-btn, .secondary-btn { min-height: 44px; touch-action: manipulation; }
+
+/* Surfaces */
+.metric-card { background: rgba(15,23,42,.9); border: 1px solid #1e293b; border-radius: 1rem; padding: .75rem; transition: border-color .2s ease; }
+.metric-card span { display: block; color: #94a3b8; font-size: .75rem; }
+.metric-card b { display: block; margin-top: .25rem; font: 700 1.1rem 'JetBrains Mono', monospace; }
+.kpi, .panel { background: #0f172a; border: 1px solid #1e293b; border-radius: 1rem; padding: 1rem; }
+.kpi { transition: border-color .2s ease; }
+.kpi:hover { border-color: #334155; }
+.kpi span { display: block; color: #94a3b8; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; }
+.kpi b { display: block; margin-top: .4rem; font: 700 1.15rem 'JetBrains Mono', monospace; }
+.panel-title { font-size: .875rem; font-weight: 700; }
+#toast > div { max-width: calc(100vw - 2.5rem); }
+
+/* Form controls and buttons */
+.field { width: 100%; background: #020617; border: 1px solid #334155; border-radius: .7rem; padding: .65rem .75rem; font-size: .75rem; outline: none; transition: border-color .2s ease, box-shadow .2s ease; }
+.field:focus { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.15); }
+.primary-btn { background: #10b981; color: #020617; border-radius: .7rem; padding: .65rem .9rem; font-size: .75rem; font-weight: 800; }
+.secondary-btn { background: #1e293b; border: 1px solid #334155; border-radius: .7rem; padding: .65rem .9rem; font-size: .75rem; }
+button, .primary-btn, .secondary-btn { transition: background-color .2s ease, border-color .2s ease, color .2s ease, box-shadow .2s ease, transform .15s ease, opacity .2s ease; }
+button:active:not(:disabled), .primary-btn:active:not(:disabled), .secondary-btn:active { transform: scale(.97); }
+.primary-btn:hover:not(:disabled) { background: #34d399; }
+.secondary-btn:hover { border-color: #475569; background: #273549; }
+
+/* Cards, badges and lists */
+.charger-row { transition: border-color .2s ease, background-color .2s ease, transform .15s ease; }
+.charger-row:hover { background-color: rgba(30,41,59,.7); }
+.charger-row:active { transform: scale(.985); }
+#history-list > div { transition: border-color .2s ease, background-color .2s ease; }
+#history-list > div:hover { border-color: #334155; }
+.status-badge { animation: badgeIn .25s ease-out; }
+@keyframes badgeIn { from { opacity:0; transform:scale(.9); } to { opacity:1; transform:none; } }
+
+/* Modals, sheets and the auth screen */
+#config-modal:not(.hidden), #qr-modal:not(.hidden) { animation: fadeIn .2s ease-out; }
+#config-modal:not(.hidden) > div, #qr-modal:not(.hidden) > div, #auth-screen:not(.hidden) > div { animation: sheetIn .22s ease-out; }
+@keyframes sheetIn { from { opacity:0; transform:translateY(12px) scale(.98); } to { opacity:1; transform:none; } }
+#auth-screen { overflow-y: auto; padding-top: max(1rem, env(safe-area-inset-top)); padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+#auth-screen .field { font-size: 16px; }
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
