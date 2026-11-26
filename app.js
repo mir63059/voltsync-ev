@@ -563,6 +563,7 @@ function bindUI() {
   }
   if ($('custom-budget')) $('custom-budget').oninput = updateBudgetHint;
   if ($('change-charger')) $('change-charger').onclick = () => switchMobileTab('scan');
+  if ($('open-camera')) $('open-camera').onclick = toggleCameraScanner;
 
   if ($('save-tariff')) $('save-tariff').onclick = updateTariff;
   if ($('add-charger')) $('add-charger').onclick = addCharger;
@@ -666,6 +667,7 @@ async function handleLogout() {
 }
 
 function switchMobileTab(tab) {
+  if (tab !== 'scan') closeCameraScanner();
   document.querySelectorAll('.mobile-tab').forEach(el => el.classList.add('hidden'));
   $('tab-' + tab)?.classList.remove('hidden');
   document.querySelectorAll('.mobile-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
@@ -801,6 +803,69 @@ function isChargerOnline(charger) {
   const seenAt = parseTimestampMs(charger.device_last_seen_at || '');
   if (seenAt === null) return true;
   return Date.now() - seenAt < 60000;
+}
+
+async function toggleCameraScanner() {
+  if (state.qrScanner) return closeCameraScanner();
+  const box = $('qr-reader');
+  if (!box) return;
+  if (typeof Html5Qrcode === 'undefined') {
+    return toast('Camera scanner failed to load. Select a charger from the list below.', 'error');
+  }
+  if (!window.isSecureContext) {
+    return toast('Camera needs a secure (HTTPS) page. Select a charger from the list below.', 'error');
+  }
+  const scanner = new Html5Qrcode('qr-reader');
+  state.qrScanner = scanner;
+  box.classList.remove('hidden');
+  if ($('open-camera')) $('open-camera').textContent = 'Close Camera';
+  try {
+    await scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: 220 },
+      text => handleCameraScan(scanner, text),
+      () => {}
+    );
+  } catch {
+    await closeCameraScanner();
+    toast('Camera unavailable or permission blocked. Select a charger from the list below.', 'error');
+  }
+}
+
+async function closeCameraScanner() {
+  const scanner = state.qrScanner;
+  state.qrScanner = null;
+  if (scanner) {
+    try {
+      if (scanner.isScanning) await scanner.stop();
+      scanner.clear();
+    } catch (e) {
+      console.warn('Camera stop failed:', e);
+    }
+  }
+  $('qr-reader')?.classList.add('hidden');
+  if ($('open-camera')) $('open-camera').textContent = 'Open Camera to Scan QR';
+}
+
+async function handleCameraScan(scanner, text) {
+  if (state.qrScanner !== scanner) return;
+  await closeCameraScanner();
+  const id = parseScannedStationId(text);
+  const charger = state.chargers.find(c => c.id.toUpperCase() === id);
+  if (!charger) return toast(`Unrecognized charger QR${id ? ': ' + id : ''}`, 'error');
+  selectCharger(charger.id);
+}
+
+// Charger QR codes encode JSON with station_id; plain station IDs are also accepted.
+function parseScannedStationId(text) {
+  const raw = String(text || '').trim();
+  try {
+    const data = JSON.parse(raw);
+    if (data && data.station_id) return String(data.station_id).trim().toUpperCase();
+  } catch {
+    // Not JSON; fall through to plain text.
+  }
+  return raw.toUpperCase();
 }
 
 function selectCharger(id) {
