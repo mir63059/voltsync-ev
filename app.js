@@ -204,6 +204,8 @@ async function init() {
   bindUI();
   syncPillGroups();
   hideConfigUI();
+  playSound('entry');
+  if (audioCtx?.state !== 'running') armEntrySoundOnGesture();
   await renderEasypaisaDetails();
   const savedUrl = (localStorage.getItem('voltsync_url') || '').trim();
   const savedKey = (localStorage.getItem('voltsync_key') || '').trim();
@@ -522,6 +524,8 @@ function upsertPaymentRequest(payload) {
 }
 
 function bindUI() {
+  $('sound-toggle')?.addEventListener('click', toggleSound);
+  syncSoundToggle();
   document.querySelectorAll('.view-mode-btn').forEach(btn => {
     btn.addEventListener('click', () => applyViewMode(btn.dataset.mode));
   });
@@ -908,6 +912,93 @@ function selectCharger(id) {
   switchMobileTab('charge');
 }
 
+const SOUND_PREF_KEY = 'voltsync_sound';
+const SOUND_COOLDOWN_MS = 900;
+const SOUND_PATTERNS = {
+  entry: [
+    { freq: 523.25, start: 0, dur: 0.35, type: 'sine', peak: 0.05 },
+    { freq: 783.99, start: 0.12, dur: 0.45, type: 'sine', peak: 0.045 }
+  ],
+  start: [
+    { freq: 659.25, start: 0, dur: 0.18, type: 'triangle', peak: 0.09 },
+    { freq: 987.77, start: 0.09, dur: 0.3, type: 'triangle', peak: 0.08 }
+  ],
+  stop: [
+    { freq: 659.25, start: 0, dur: 0.22, type: 'sine', peak: 0.06 },
+    { freq: 440, start: 0.14, dur: 0.45, type: 'sine', peak: 0.05 }
+  ]
+};
+let audioCtx = null;
+const lastSoundAt = {};
+
+function isSoundEnabled() {
+  return localStorage.getItem(SOUND_PREF_KEY) !== 'off';
+}
+
+function getAudioContext() {
+  if (audioCtx) return audioCtx;
+  const Ctor = window.AudioContext || window.webkitAudioContext;
+  if (!Ctor) return null;
+  try { audioCtx = new Ctor(); } catch { audioCtx = null; }
+  return audioCtx;
+}
+
+function playTone(ctx, { freq, start, dur, type, peak }) {
+  const t0 = ctx.currentTime + start;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t0);
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.02);
+}
+
+function playSoundNow(ctx, kind) {
+  lastSoundAt[kind] = Date.now();
+  SOUND_PATTERNS[kind].forEach(note => playTone(ctx, note));
+}
+
+// Plays a synthesized chime. Silently no-ops when muted, unsupported, or blocked by autoplay policy.
+function playSound(kind) {
+  if (!isSoundEnabled() || !SOUND_PATTERNS[kind]) return;
+  if (Date.now() - (lastSoundAt[kind] || 0) < SOUND_COOLDOWN_MS) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  if (ctx.state === 'running') return playSoundNow(ctx, kind);
+  ctx.resume?.().then(() => {
+    if (ctx.state === 'running') playSoundNow(ctx, kind);
+  }).catch(() => {});
+}
+
+// Browsers block audio until a user gesture, so the entry chime waits for the first tap or key press.
+function armEntrySoundOnGesture() {
+  const arm = () => {
+    window.removeEventListener('pointerdown', arm, true);
+    window.removeEventListener('keydown', arm, true);
+    if (!lastSoundAt.entry) playSound('entry');
+  };
+  window.addEventListener('pointerdown', arm, true);
+  window.addEventListener('keydown', arm, true);
+}
+
+function syncSoundToggle() {
+  const btn = $('sound-toggle');
+  if (!btn) return;
+  const on = isSoundEnabled();
+  btn.textContent = on ? '🔊 Sound' : '🔇 Muted';
+  btn.setAttribute('aria-pressed', String(on));
+  btn.title = on ? 'Mute sound effects' : 'Unmute sound effects';
+}
+
+function toggleSound() {
+  localStorage.setItem(SOUND_PREF_KEY, isSoundEnabled() ? 'off' : 'on');
+  syncSoundToggle();
+}
+
 const CHARGE_FX_MS = { connect: 850, unplug: 720 };
 let chargeFxTimer = null;
 
@@ -968,6 +1059,7 @@ async function toggleCharging() {
     });
     if (error) throw error;
     settleChargeFx('started');
+    playSound('start');
     await loadSupabaseData();
     if ($('payment-message')) $('payment-message').textContent = '';
     toast(`Charging started with a maximum spend of Rs. ${fmt(budget)}.`);
@@ -993,6 +1085,7 @@ async function stopCharging(reason, notification = null) {
     });
     if (error) throw error;
     settleChargeFx('stopped');
+    playSound('stop');
     await loadSupabaseData();
     const billed = Number(data?.bill_pkr || 0);
     toast(notification || `Charging stopped • Rs. ${fmt(billed)} used; unused balance returned.`);
