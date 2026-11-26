@@ -63,9 +63,9 @@ const fmtEnergy = (n) => Number(n || 0).toLocaleString('en-PK', { minimumFractio
 const roundMoney = (amount) => Math.round((Number(amount) + Number.EPSILON) * 100) / 100;
 
 function parseBatteryPct(raw) {
-  if (raw === null || raw === undefined || raw === '') return 0;
+  if (raw === null || raw === undefined || raw === '') return 1;
   const num = Number(raw);
-  return Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : 0;
+  return Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : 1;
 }
 
 function parseTimestampMs(raw) {
@@ -137,9 +137,9 @@ function consoleLog(packet, type = 'IN') {
 
 function seedDemo() {
   state.chargers = [
-    { id: 'CHG-001', name: 'Main Gate Fast Charger', location: 'Karachi Station 1', status: 'online', voltage: 0, current: 0, power_kw: 0, current_kwh: 0, battery_pct: 0, active_user_id: null },
-    { id: 'CHG-002', name: 'Shopping Mall Charger', location: 'Karachi Station 2', status: 'online', voltage: 0, current: 0, power_kw: 0, current_kwh: 0, battery_pct: 0, active_user_id: null },
-    { id: 'CHG-003', name: 'Airport Express Charger', location: 'Karachi Station 3', status: 'offline', voltage: 0, current: 0, power_kw: 0, current_kwh: 0, battery_pct: 0, active_user_id: null }
+    { id: 'CHG-001', name: 'Main Gate Fast Charger', location: 'Karachi Station 1', status: 'online', voltage: 0, current: 0, power_kw: 0, current_kwh: 0, battery_pct: 1, active_user_id: null },
+    { id: 'CHG-002', name: 'Shopping Mall Charger', location: 'Karachi Station 2', status: 'online', voltage: 0, current: 0, power_kw: 0, current_kwh: 0, battery_pct: 1, active_user_id: null },
+    { id: 'CHG-003', name: 'Airport Express Charger', location: 'Karachi Station 3', status: 'online', voltage: 0, current: 0, power_kw: 0, current_kwh: 0, battery_pct: 1, active_user_id: null }
   ];
   state.sessions = [];
   state.paymentRequests = [];
@@ -954,7 +954,7 @@ async function addCharger() {
     current: 0,
     power_kw: 0,
     current_kwh: 0,
-    battery_pct: 0
+    battery_pct: 1
   });
   if (error) return toast(error.message, 'error');
   if ($('new-charger-id')) $('new-charger-id').value = '';

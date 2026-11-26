@@ -103,9 +103,9 @@ on conflict (id) do nothing;
 insert into public.stations
   (id,name,location,latitude,longitude,status,voltage,current,current_kwh,battery_pct)
 values
-  ('CHG-001','Main Gate Fast Charger','Karachi, Clifton',24.813800,67.030400,'online',0,0,0,null),
-  ('CHG-002','Shopping Mall Charger','Karachi, DHA Phase 6',24.801900,67.062100,'online',0,0,0,null),
-  ('CHG-003','Airport Express Charger','Karachi International Airport',24.906500,67.160800,'offline',0,0,0,null)
+  ('CHG-001','Main Gate Fast Charger','Karachi, Clifton',24.813800,67.030400,'online',0,0,0,1),
+  ('CHG-002','Shopping Mall Charger','Karachi, DHA Phase 6',24.801900,67.062100,'online',0,0,0,1),
+  ('CHG-003','Airport Express Charger','Karachi International Airport',24.906500,67.160800,'online',0,0,0,1)
 on conflict (id) do update set
   name=excluded.name,
   location=excluded.location,
