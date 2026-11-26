@@ -476,8 +476,9 @@ function upsertPaymentRequest(payload) {
   const request = payload.new || payload.old;
   if (!request) return;
   if (payload.eventType === 'DELETE') {
-    state.paymentRequests = state.paymentRequests.filter(item => item.id !== request.id);
+    state.paymentRequests = (state.paymentRequests || []).filter(item => item.id !== request.id);
   } else {
+    state.paymentRequests = state.paymentRequests || [];
     const index = state.paymentRequests.findIndex(item => item.id === request.id);
     if (index >= 0) state.paymentRequests[index] = { ...state.paymentRequests[index], ...request };
     else state.paymentRequests.unshift(request);
@@ -638,7 +639,12 @@ function readBudgetAmount() {
   const raw = selected === 'custom' ? $('custom-budget')?.value : selected;
   if (raw === '' || raw == null) return null;
   const amount = Number(raw);
-  if (!Number.isFinite(amount) || amount < 0.01 || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.000001) {
+  if (!Number.isFinite(amount) || amount < 0.01) {
+    return null;
+  }
+  // Check if amount has at most 2 decimal places
+  const cents = Math.round(amount * 100);
+  if (Math.abs(cents - amount * 100) > 0.01) {
     return null;
   }
   return roundMoney(amount);
@@ -669,7 +675,8 @@ function updateBudgetHint() {
 function renderChargerList() {
   const list = $('charger-list');
   if (!list) return;
-  list.innerHTML = state.chargers.map(c => {
+  const chargers = state.chargers || [];
+  list.innerHTML = chargers.map(c => {
     const online = isChargerOnline(c);
     const status = c.status === 'disabled'
       ? 'Disabled'
@@ -766,7 +773,8 @@ async function stopCharging(reason, notification = null) {
 }
 
 function renderMeter() {
-  const c = state.chargers.find(x => x.id === state.selectedChargerId) || state.chargers[0];
+  const chargers = state.chargers || [];
+  const c = chargers.find(x => x.id === state.selectedChargerId) || chargers[0];
   if (!c) return;
 
   const serverDuration = Math.max(0, Number(state.activeDbSession?.duration_seconds || 0));
@@ -811,7 +819,8 @@ function renderMeter() {
 function updateChargingMeter() {
   if (!state.activeDbSession) return;
   renderMeter();
-  const charger = state.chargers.find(item => item.id === state.activeDbSession.station_id);
+  const chargers = state.chargers || [];
+  const charger = chargers.find(item => item.id === state.activeDbSession.station_id);
   const batteryPct = parseBatteryPct(charger?.battery_pct);
   if (batteryPct !== null && batteryPct >= 100 && state.autoStopSessionId !== state.activeDbSession.id) {
     state.autoStopSessionId = state.activeDbSession.id;
@@ -850,18 +859,18 @@ function renderHistory() {
   const list = $('history-list');
   if (!list) return;
   const userId = state.session?.user?.id || getActiveUser()?.id;
-  const sessions = state.sessions.filter(s => s.user_id === userId);
+  const sessions = (state.sessions || []).filter(s => s.user_id === userId);
   if ($('history-count')) $('history-count').textContent = sessions.length + ' Sessions';
   list.innerHTML = sessions.slice(0, 20).map(s => `<div class="bg-slate-900 border border-slate-800 rounded-xl p-3"><div class="flex justify-between"><span class="font-mono text-xs text-emerald-400">${escapeHtml(s.session_code || 'SESSION')}</span><span class="text-[10px] px-2 py-0.5 rounded-full ${s.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-800 text-slate-400'}">${escapeHtml(s.status)}</span></div><div class="mt-2 flex justify-between text-xs"><span>${escapeHtml(s.station_id || '-')}</span><b class="text-emerald-400">Rs. ${fmt(s.total_bill_pkr || 0)}</b></div><div class="mt-1 text-[10px] text-slate-400">${fmtEnergy(s.energy_kwh || 0)} kWh • ${secondsToHMS(s.duration_seconds || 0)}</div></div>`).join('') || '<div class="text-xs text-slate-500 text-center py-8">No charging sessions yet</div>';
 }
 
 function renderAdmin() {
   if (!hasOwnerAdminAccess() || !$('admin-panel')) return;
-  const active = state.chargers.filter(c => c.status === 'charging').length;
-  const energy = state.sessions
+  const active = (state.chargers || []).filter(c => c.status === 'charging').length;
+  const energy = (state.sessions || [])
     .filter(s => s.status === 'completed')
     .reduce((n, s) => n + Number(s.energy_kwh || 0), 0);
-  const revenue = state.sessions
+  const revenue = (state.sessions || [])
     .filter(s => s.status === 'completed')
     .reduce((n, s) => n + Number(s.total_bill_pkr || 0), 0);
 
@@ -875,7 +884,7 @@ function renderAdmin() {
 
   const tbody = $('telemetry-table');
   if (!tbody) return;
-  tbody.innerHTML = state.chargers.map(c => {
+  tbody.innerHTML = (state.chargers || []).map(c => {
     const u = state.users.find(x => x.id === c.active_user_id);
     const st = c.status === 'charging'
       ? 'text-emerald-400'
@@ -1043,10 +1052,15 @@ function selectedPaymentAmount() {
     ? $('payment-custom-amount')?.value
     : selectEl.value;
   const amount = Number(raw);
-  if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.000001) {
+  if (!Number.isFinite(amount) || amount <= 0) {
     return null;
   }
-  return Math.round(amount * 100);
+  // Check if amount has at most 2 decimal places
+  const cents = Math.round(amount * 100);
+  if (Math.abs(cents - amount * 100) > 0.01) {
+    return null;
+  }
+  return cents;
 }
 
 function syncPaymentAmount() {
