@@ -459,7 +459,6 @@ function syncActiveSession() {
     const parsedStart = parseTimestampMs(active.started_at);
     const serverDur = Math.max(0, Number(active.duration_seconds || 0));
     if (parsedStart !== null) {
-      // Keep elapsed >= 0 even if server clock is slightly ahead of client clock.
       state.startedAt = parsedStart > Date.now() ? Date.now() - serverDur * 1000 : parsedStart;
     } else {
       state.startedAt = Date.now() - serverDur * 1000;

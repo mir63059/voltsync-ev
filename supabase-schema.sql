@@ -27,7 +27,8 @@ create table if not exists public.profiles (
   full_name text,
   phone text,
   role text not null default 'user' check (role in ('user','admin')),
-  wallet_balance numeric(10,2) not null default 2500.00,
+  wallet_balance numeric(10,2) not null default 0.00,
+  paid_balance numeric(10,2) not null default 0.00,
   total_sessions integer not null default 0,
   created_at timestamptz not null default now()
 );
@@ -35,7 +36,8 @@ alter table public.profiles add column if not exists email text;
 alter table public.profiles add column if not exists full_name text;
 alter table public.profiles add column if not exists phone text;
 alter table public.profiles add column if not exists role text not null default 'user';
-alter table public.profiles add column if not exists wallet_balance numeric(10,2) not null default 2500.00;
+alter table public.profiles add column if not exists wallet_balance numeric(10,2) not null default 0.00;
+alter table public.profiles add column if not exists paid_balance numeric(10,2) not null default 0.00;
 alter table public.profiles add column if not exists total_sessions integer not null default 0;
 alter table public.profiles add column if not exists created_at timestamptz not null default now();
 
@@ -48,13 +50,18 @@ create table if not exists public.stations (
   status text not null default 'online' check (status in ('online','charging','offline','disabled')),
   voltage numeric(6,1) not null default 0,
   current numeric(6,1) not null default 0,
+  power_kw numeric(8,3) not null default 0,
   current_kwh numeric(8,3) not null default 0,
-  battery_pct integer not null default 50 check (battery_pct between 0 and 100),
+  battery_pct integer check (battery_pct between 0 and 100),
   active_user_id uuid references public.profiles(id),
+  device_last_seen_at timestamptz,
   updated_at timestamptz not null default now()
 );
 alter table public.stations add column if not exists latitude numeric(9,6);
 alter table public.stations add column if not exists longitude numeric(9,6);
+alter table public.stations add column if not exists power_kw numeric(8,3) not null default 0;
+alter table public.stations add column if not exists device_last_seen_at timestamptz;
+alter table public.stations alter column battery_pct drop not null;
 
 create table if not exists public.sessions (
   id uuid primary key default gen_random_uuid(),
@@ -63,6 +70,7 @@ create table if not exists public.sessions (
   station_id text not null references public.stations(id),
   energy_kwh numeric(8,3) not null default 0,
   unit_rate_pkr numeric(8,2) not null,
+  budget_pkr numeric(10,2) not null default 0.00,
   total_bill_pkr numeric(10,2) not null default 0,
   duration_seconds integer not null default 0,
   status text not null default 'active' check (status in ('active','completed')),
@@ -95,9 +103,9 @@ on conflict (id) do nothing;
 insert into public.stations
   (id,name,location,latitude,longitude,status,voltage,current,current_kwh,battery_pct)
 values
-  ('CHG-001','Main Gate Fast Charger','Karachi, Clifton',24.813800,67.030400,'online',0,0,0,42),
-  ('CHG-002','Shopping Mall Charger','Karachi, DHA Phase 6',24.801900,67.062100,'online',0,0,0,68),
-  ('CHG-003','Airport Express Charger','Karachi International Airport',24.906500,67.160800,'offline',0,0,0,50)
+  ('CHG-001','Main Gate Fast Charger','Karachi, Clifton',24.813800,67.030400,'online',0,0,0,null),
+  ('CHG-002','Shopping Mall Charger','Karachi, DHA Phase 6',24.801900,67.062100,'online',0,0,0,null),
+  ('CHG-003','Airport Express Charger','Karachi International Airport',24.906500,67.160800,'offline',0,0,0,null)
 on conflict (id) do update set
   name=excluded.name,
   location=excluded.location,
@@ -118,7 +126,7 @@ begin
     coalesce(new.raw_user_meta_data->>'full_name','RideaseVX User'),
     coalesce(new.raw_user_meta_data->>'phone',''),
     'user',
-    2500.00
+    0.00
   )
   on conflict (id) do nothing;
   return new;
@@ -137,10 +145,8 @@ stable
 security definer
 set search_path = ''
 as $$
-  select exists (
-    select 1 from public.profiles
-    where id = (select auth.uid()) and role = 'admin'
-  );
+  select auth.uid() is not null
+    and lower(coalesce(auth.jwt()->>'email',''))='mir.63059@iqra.edu.pk';
 $$;
 revoke all on function public.is_admin() from public;
 grant execute on function public.is_admin() to anon, authenticated;
@@ -164,130 +170,6 @@ for each row execute function public.updated_at_timestamp();
 drop trigger if exists settings_updated_at on public.system_settings;
 create trigger settings_updated_at before update on public.system_settings
 for each row execute function public.updated_at_timestamp();
-
-create or replace function public.start_charging_session(p_station_id text)
-returns public.sessions
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_user_id uuid := auth.uid();
-  v_station public.stations%rowtype;
-  v_profile public.profiles%rowtype;
-  v_session public.sessions%rowtype;
-  v_rate numeric(8,2);
-begin
-  if v_user_id is null then
-    raise exception 'Authentication required';
-  end if;
-
-  select * into v_profile from public.profiles where id = v_user_id for update;
-  if not found then
-    raise exception 'User profile not found';
-  end if;
-  if v_profile.wallet_balance <= 0 then
-    raise exception 'Insufficient wallet balance';
-  end if;
-  if exists (select 1 from public.sessions where user_id = v_user_id and status = 'active') then
-    raise exception 'An active charging session already exists for this user';
-  end if;
-
-  select * into v_station from public.stations where id = p_station_id for update;
-  if not found or v_station.status in ('offline','disabled','charging') then
-    raise exception 'Station is not available';
-  end if;
-
-  select unit_rate_pkr into v_rate from public.system_settings where id = 1;
-  insert into public.sessions (session_code,user_id,station_id,unit_rate_pkr)
-  values (
-    'SES-' || upper(substr(replace(gen_random_uuid()::text,'-',''),1,8)),
-    v_user_id,
-    p_station_id,
-    coalesce(v_rate,65.00)
-  )
-  returning * into v_session;
-
-  update public.stations
-  set status='charging', active_user_id=v_user_id
-  where id=p_station_id;
-
-  return v_session;
-end
-$$;
-revoke all on function public.start_charging_session(text) from public;
-grant execute on function public.start_charging_session(text) to authenticated;
-
-drop function if exists public.complete_charging_session(text,text);
-create function public.complete_charging_session(p_station_id text, p_reason text default 'Stopped')
-returns jsonb
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_user_id uuid := auth.uid();
-  v_session public.sessions%rowtype;
-  v_is_admin boolean;
-  v_bill numeric(10,2);
-begin
-  if v_user_id is null then
-    raise exception 'Authentication required';
-  end if;
-
-  v_is_admin := public.is_admin();
-  select * into v_session
-  from public.sessions
-  where station_id=p_station_id and status='active'
-  order by started_at desc
-  limit 1
-  for update;
-
-  if not found then
-    raise exception 'No active session found for this station';
-  end if;
-  if v_session.user_id <> v_user_id and not v_is_admin then
-    raise exception 'Not authorized to complete this session';
-  end if;
-
-  v_bill := round(greatest(v_session.energy_kwh,0) * v_session.unit_rate_pkr,2);
-  update public.profiles
-  set wallet_balance=wallet_balance-v_bill,
-      total_sessions=total_sessions+1
-  where id=v_session.user_id and wallet_balance >= v_bill;
-  if not found then
-    raise exception 'Insufficient wallet balance to settle this session';
-  end if;
-
-  update public.sessions
-  set status='completed',
-      ended_at=now(),
-      duration_seconds=greatest(0,extract(epoch from (now()-started_at))::integer),
-      total_bill_pkr=v_bill
-  where id=v_session.id;
-
-  insert into public.transactions(user_id,amount_pkr,type,description)
-  values (
-    v_session.user_id,
-    v_bill,
-    'charge_deduction',
-    coalesce(p_reason,'Completed') || ' • ' || p_station_id
-  );
-
-  update public.stations
-  set status='online',voltage=0,current=0,current_kwh=0,active_user_id=null
-  where id=p_station_id;
-
-  return jsonb_build_object(
-    'ok',true,
-    'session_id',v_session.id,
-    'bill_pkr',v_bill,
-    'station_id',p_station_id
-  );
-end
-$$;
-revoke all on function public.complete_charging_session(text,text) from public;
-grant execute on function public.complete_charging_session(text,text) to authenticated;
 
 drop function if exists public.top_up_wallet(numeric,text);
 
