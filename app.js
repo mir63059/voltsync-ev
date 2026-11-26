@@ -928,7 +928,10 @@ const SOUND_PATTERNS = {
     { freq: 440, start: 0.14, dur: 0.45, type: 'sine', peak: 0.05 }
   ]
 };
+const CHARGE_START_TRACK_SRC = 'assets/charge-start.aac';
 let audioCtx = null;
+let chargeStartTrack = null;
+let chargeStartTrackFailed = false;
 const lastSoundAt = {};
 
 function isSoundEnabled() {
@@ -985,6 +988,32 @@ function armEntrySoundOnGesture() {
   window.addEventListener('keydown', arm, true);
 }
 
+function getChargeStartTrack() {
+  if (chargeStartTrack) return chargeStartTrack;
+  if (typeof Audio === 'undefined') return null;
+  chargeStartTrack = new Audio(CHARGE_START_TRACK_SRC);
+  chargeStartTrack.preload = 'auto';
+  chargeStartTrack.addEventListener('error', () => { chargeStartTrackFailed = true; });
+  return chargeStartTrack;
+}
+
+// Plays the Charge Start track from the beginning. Falls back to the synthesized start chime if the track cannot load or play.
+function playChargeStartTrack() {
+  if (!isSoundEnabled()) return;
+  const track = getChargeStartTrack();
+  if (!track || chargeStartTrackFailed) return playSound('start');
+  if (!track.paused) return;
+  track.currentTime = 0;
+  const started = track.play();
+  started?.catch(() => {
+    if (track.paused) playSound('start');
+  });
+}
+
+function stopChargeStartTrack() {
+  if (chargeStartTrack && !chargeStartTrack.paused) chargeStartTrack.pause();
+}
+
 function syncSoundToggle() {
   const btn = $('sound-toggle');
   if (!btn) return;
@@ -996,6 +1025,7 @@ function syncSoundToggle() {
 
 function toggleSound() {
   localStorage.setItem(SOUND_PREF_KEY, isSoundEnabled() ? 'off' : 'on');
+  if (!isSoundEnabled()) stopChargeStartTrack();
   syncSoundToggle();
 }
 
@@ -1059,7 +1089,7 @@ async function toggleCharging() {
     });
     if (error) throw error;
     settleChargeFx('started');
-    playSound('start');
+    playChargeStartTrack();
     await loadSupabaseData();
     if ($('payment-message')) $('payment-message').textContent = '';
     toast(`Charging started with a maximum spend of Rs. ${fmt(budget)}.`);
@@ -1085,6 +1115,7 @@ async function stopCharging(reason, notification = null) {
     });
     if (error) throw error;
     settleChargeFx('stopped');
+    stopChargeStartTrack();
     playSound('stop');
     await loadSupabaseData();
     const billed = Number(data?.bill_pkr || 0);
