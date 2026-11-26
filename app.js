@@ -48,6 +48,7 @@ const state = {
   profile: null,
   authMode: 'login',
   isAdmin: false,
+  viewMode: 'split',
   demoMode: false,
   qrScanner: null,
   currentQrId: null,
@@ -172,6 +173,25 @@ function showAdminPanelIfOwner() {
   }
   $('admin-panel')?.classList.remove('hidden');
   renderAdmin();
+  applyViewMode();
+}
+
+const VIEW_MODES = ['mobile', 'split', 'admin'];
+
+// Owner-only layout switcher. Non-owners always get the standard split layout with the admin panel hidden.
+function applyViewMode(mode = state.viewMode) {
+  const owner = Boolean(state.session && state.isAdmin);
+  state.viewMode = owner && VIEW_MODES.includes(mode) ? mode : 'split';
+  const switcher = $('view-switcher');
+  switcher?.classList.toggle('hidden', !owner);
+  switcher?.classList.toggle('flex', owner);
+  $('mobile-panel')?.classList.toggle('hidden', owner && state.viewMode === 'admin');
+  $('admin-panel')?.classList.toggle('hidden', !owner || state.viewMode === 'mobile');
+  document.querySelectorAll('.view-mode-btn').forEach(btn => {
+    const active = btn.dataset.mode === state.viewMode;
+    btn.classList.toggle('bg-emerald-500/20', active);
+    btn.classList.toggle('text-emerald-300', active);
+  });
 }
 
 async function init() {
@@ -231,6 +251,7 @@ function setDemoMode() {
   $('role-badge')?.classList.add('hidden');
   if ($('workspace')) $('workspace').className = 'grid grid-cols-1 gap-6';
   if ($('mobile-panel')) $('mobile-panel').className = 'flex justify-center';
+  applyViewMode();
   renderAll();
   consoleLog({ mode: 'demo', status: 'authentication-required; charging-disabled' }, 'IN');
 }
@@ -286,6 +307,7 @@ async function applySessionState(session) {
     if ($('workspace')) $('workspace').className = 'grid grid-cols-1 gap-6';
     if ($('mobile-panel')) $('mobile-panel').className = 'flex justify-center';
   }
+  applyViewMode();
 
   await loadSupabaseData();
   hideConfigUI();
@@ -495,6 +517,9 @@ function upsertPaymentRequest(payload) {
 }
 
 function bindUI() {
+  document.querySelectorAll('.view-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyViewMode(btn.dataset.mode));
+  });
   document.querySelectorAll('.mobile-nav-btn').forEach(btn => {
     btn.addEventListener('click', () => switchMobileTab(btn.dataset.tab));
   });
@@ -773,8 +798,7 @@ function renderChargerList() {
 function isChargerOnline(charger) {
   if (!charger || charger.status === 'offline' || charger.status === 'disabled') return false;
   if (charger.status === 'charging') return true;
-  const lastSeenRaw = charger.device_last_seen_at || charger.updated_at || '';
-  const seenAt = parseTimestampMs(lastSeenRaw);
+  const seenAt = parseTimestampMs(charger.device_last_seen_at || '');
   if (seenAt === null) return true;
   return Date.now() - seenAt < 60000;
 }
@@ -973,7 +997,7 @@ function renderAdmin() {
     const pwr = c.power_kw != null && Number.isFinite(Number(c.power_kw))
       ? Math.max(0, Number(c.power_kw))
       : (volt * curr) / 1000;
-    return `<tr class="border-b border-slate-800/70"><td class="p-3"><b class="font-mono text-emerald-400">${escapeHtml(c.id)}</b><div class="text-slate-500">${escapeHtml(c.name)}</div></td><td class="${st}">${escapeHtml(c.status)}</td><td class="font-mono">${fmt(volt)} V</td><td class="font-mono">${fmt(curr)} A</td><td class="font-mono">${fmt(pwr)} kW</td><td class="font-mono">${fmtEnergy(c.current_kwh)} kWh</td><td>${escapeHtml(battery)}</td><td>${escapeHtml(u?.full_name || '-')}</td><td><div class="flex flex-wrap gap-1"><button class="admin-qr px-2 py-1 rounded bg-sky-500/15 text-sky-300" data-id="${escapeHtml(c.id)}">View / Print QR</button><button class="admin-stop px-2 py-1 rounded bg-red-500/15 text-red-400" data-id="${escapeHtml(c.id)}">Stop</button><button class="admin-disable px-2 py-1 rounded bg-slate-800 text-slate-300" data-id="${escapeHtml(c.id)}">${c.status === 'disabled' ? 'Enable' : 'Disable'}</button></div></td></tr>`;
+    return `<tr class="border-b border-slate-800/70"><td class="p-3"><b class="font-mono text-emerald-400">${escapeHtml(c.id)}</b><div class="text-slate-500">${escapeHtml(c.name)}</div></td><td class="${st}">${escapeHtml(c.status)}</td><td class="font-mono">${fmt(volt)} V</td><td class="font-mono">${fmt(curr)} A</td><td class="font-mono">${fmt(pwr)} kW</td><td class="font-mono">${fmtEnergy(c.current_kwh)} kWh</td><td>${escapeHtml(battery)}</td><td>${escapeHtml(u?.full_name || '-')}</td><td><div class="flex flex-wrap gap-1"><button class="admin-qr px-2 py-1 rounded bg-sky-500/15 text-sky-300" data-id="${escapeHtml(c.id)}">View / Print QR</button><button class="admin-stop px-2 py-1 rounded bg-red-500/15 text-red-400" data-id="${escapeHtml(c.id)}">Stop</button><button class="admin-disable px-2 py-1 rounded bg-slate-800 text-slate-300" data-id="${escapeHtml(c.id)}">${c.status === 'disabled' ? 'Enable' : 'Disable'}</button>${c.status === 'disabled' || c.status === 'charging' ? '' : `<button class="admin-status px-2 py-1 rounded bg-slate-800 text-slate-300" data-id="${escapeHtml(c.id)}" data-status="${c.status === 'offline' ? 'online' : 'offline'}">${c.status === 'offline' ? 'Set Online' : 'Set Offline'}</button>`}</div></td></tr>`;
   }).join('') || '<tr><td colspan="9" class="p-6 text-center text-slate-500">No chargers</td></tr>';
 
   document.querySelectorAll('.admin-stop').forEach(b => {
@@ -981,6 +1005,9 @@ function renderAdmin() {
   });
   document.querySelectorAll('.admin-disable').forEach(b => {
     b.onclick = () => adminOverride(b.dataset.id, 'disable');
+  });
+  document.querySelectorAll('.admin-status').forEach(b => {
+    b.onclick = () => adminSetStatus(b.dataset.id, b.dataset.status);
   });
   document.querySelectorAll('.admin-qr').forEach(b => {
     b.onclick = () => openQrModal(b.dataset.id);
@@ -1070,6 +1097,17 @@ async function addCharger() {
   toast(id + ' registered');
 }
 
+async function adminSetStatus(id, status) {
+  if (!requireAdmin()) return;
+  if (!['online', 'offline'].includes(status)) return toast('Unknown station status.', 'error');
+  const c = state.chargers.find(x => x.id === id);
+  if (!c) return;
+  if (c.status === 'charging' || c.status === 'disabled') return toast('Stop the session or enable the station first.', 'error');
+  const { error } = await state.supabase.from('stations').update({ status }).eq('id', id);
+  if (error) return toast(error.message, 'error');
+  await loadSupabaseData();
+}
+
 async function adminOverride(id, action) {
   if (!requireAdmin()) return;
   const c = state.chargers.find(x => x.id === id);
@@ -1134,20 +1172,13 @@ async function renderEasypaisaDetails() {
     return;
   }
   image.onload = () => image.classList.remove('hidden');
-  try {
-    const response = await fetch(EASYPAISA_QR_IMAGE, { method: 'HEAD', cache: 'no-store' });
-    if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) {
-      if ($('easypaisa-qr-help')) {
-        $('easypaisa-qr-help').textContent = 'QR unavailable. Pay using the Easypaisa account details above.';
-      }
-      return;
-    }
-    image.src = EASYPAISA_QR_IMAGE;
-  } catch {
+  image.onerror = () => {
+    image.classList.add('hidden');
     if ($('easypaisa-qr-help')) {
-      $('easypaisa-qr-help').textContent = 'QR unavailable. Pay using the Easypaisa account details above.';
+      $('easypaisa-qr-help').textContent = 'Add easypaisa-qr.png to the project root to show the payment QR. Pay using the account details above.';
     }
-  }
+  };
+  image.src = EASYPAISA_QR_IMAGE;
 }
 
 function selectedPaymentAmount() {

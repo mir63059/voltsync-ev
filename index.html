@@ -28,6 +28,11 @@
         <div><h1 class="font-bold">RideaseVX</h1><p class="text-xs text-slate-400">Smart EV Charging Station</p></div>
       </div>
       <div class="flex items-center gap-2">
+        <nav id="view-switcher" class="hidden items-center gap-1 rounded-lg border border-slate-700 p-0.5 text-[11px]" aria-label="Dashboard view">
+          <button type="button" data-mode="mobile" class="view-mode-btn px-2 py-1 rounded-md hover:bg-slate-800">Mobile</button>
+          <button type="button" data-mode="split" class="view-mode-btn px-2 py-1 rounded-md hover:bg-slate-800">Split</button>
+          <button type="button" data-mode="admin" class="view-mode-btn px-2 py-1 rounded-md hover:bg-slate-800">Admin Panel</button>
+        </nav>
         <div id="account-info" class="hidden max-w-52 text-right"><div class="flex items-center justify-end gap-2"><span id="role-badge" class="hidden rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">Owner/Admin</span><div id="account-name" class="truncate text-xs font-semibold"></div></div><div id="account-wallet" class="font-mono text-[10px] text-emerald-400"></div></div>
         <button id="logout-btn" class="hidden px-2.5 py-1.5 text-xs rounded-lg border border-slate-700 hover:bg-red-500/15 hover:text-red-300">Logout</button>
       </div>
@@ -119,8 +124,7 @@
         </div>
       </section>
 
-      <template id="admin-panel-template">
-      <section id="admin-panel" class="space-y-5">
+      <section id="admin-panel" class="hidden space-y-5">
         <div class="panel">
           <h2 class="panel-title">Easypaisa payment verification</h2>
           <p class="mt-1 text-xs text-slate-400">Verify each TID and amount in Easypaisa before approving. Approval credits only the submitted amount.</p>
@@ -131,7 +135,6 @@
         <div class="panel overflow-hidden"><h2 class="panel-title px-1">Live Charger Telemetry</h2><div class="overflow-x-auto mt-3"><table class="w-full text-left text-xs"><thead class="text-slate-400 border-b border-slate-800"><tr><th class="p-3">Box</th><th>Status</th><th>Voltage</th><th>Current</th><th>Power</th><th>Energy</th><th>Battery</th><th>Active User</th><th>Action</th></tr></thead><tbody id="telemetry-table"></tbody></table></div></div>
         <div class="panel"><div class="flex justify-between"><h2 class="panel-title">MQTT / Realtime Console</h2><button id="clear-console" class="text-xs text-slate-400">Clear</button></div><div id="console" class="mt-3 h-44 overflow-y-auto bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[11px] space-y-1"></div></div>
       </section>
-      </template>
     </div>
   </main>
 
@@ -164,6 +167,6 @@
   <style>
     .metric-card{background:rgba(15,23,42,.9);border:1px solid #1e293b;border-radius:1rem;padding:.75rem}.metric-card span{display:block;color:#94a3b8;font-size:.75rem}.metric-card b{display:block;margin-top:.25rem;font:700 1.1rem 'JetBrains Mono',monospace}.kpi,.panel{background:#0f172a;border:1px solid #1e293b;border-radius:1rem;padding:1rem}.kpi span{display:block;color:#94a3b8;font-size:.68rem;text-transform:uppercase}.kpi b{display:block;margin-top:.4rem;font:700 1.15rem 'JetBrains Mono',monospace}.panel-title{font-size:.875rem;font-weight:700}button,.field{min-height:44px;touch-action:manipulation}#toast>div{max-width:calc(100vw - 2.5rem)}.field{width:100%;background:#020617;border:1px solid #334155;border-radius:.7rem;padding:.65rem .75rem;font-size:.75rem;outline:none}.field:focus{border-color:#10b981}.primary-btn{background:#10b981;color:#020617;border-radius:.7rem;padding:.65rem .9rem;font-size:.75rem;font-weight:800}.secondary-btn{background:#1e293b;border:1px solid #334155;border-radius:.7rem;padding:.65rem .9rem;font-size:.75rem}#auth-screen{overflow-y:auto;padding-top:max(1rem,env(safe-area-inset-top));padding-bottom:max(1rem,env(safe-area-inset-bottom))}#auth-screen .field{font-size:16px}
   </style>
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
