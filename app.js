@@ -908,12 +908,33 @@ function selectCharger(id) {
   switchMobileTab('charge');
 }
 
+const CHARGE_FX_MS = { connect: 1000, unplug: 850 };
+let chargeFxTimer = null;
+
+function clearChargeFx() {
+  clearTimeout(chargeFxTimer);
+  chargeFxTimer = null;
+  const fx = $('charge-fx');
+  if (fx) fx.classList.remove('is-connect', 'is-unplug', 'is-confirmed');
+}
+
 function playChargeFx(kind) {
   const fx = $('charge-fx');
   if (!fx) return;
-  fx.classList.remove('is-connect', 'is-unplug');
+  const kindKey = kind === 'unplug' ? 'unplug' : 'connect';
+  const ms = CHARGE_FX_MS[kindKey];
+  clearChargeFx();
   void fx.offsetWidth;
-  fx.classList.add(kind === 'unplug' ? 'is-unplug' : 'is-connect');
+  fx.style.setProperty('--fx-ms', `${ms}ms`);
+  fx.classList.add(kindKey === 'unplug' ? 'is-unplug' : 'is-connect');
+  chargeFxTimer = setTimeout(clearChargeFx, ms + 50);
+}
+
+function confirmChargeFx() {
+  const fx = $('charge-fx');
+  if (fx && (fx.classList.contains('is-connect') || fx.classList.contains('is-unplug'))) {
+    fx.classList.add('is-confirmed');
+  }
 }
 
 async function toggleCharging() {
@@ -932,17 +953,19 @@ async function toggleCharging() {
   if (budget > balance) return toast('Budget exceeds your verified paid balance.', 'error');
 
   if ($('toggle-charge')) $('toggle-charge').disabled = true;
+  playChargeFx('connect');
   try {
     const { error } = await state.supabase.rpc('start_charging_session', {
       p_station_id: c.id,
       p_budget_pkr: budget
     });
     if (error) throw error;
-    playChargeFx('connect');
+    confirmChargeFx();
     await loadSupabaseData();
     if ($('payment-message')) $('payment-message').textContent = '';
     toast(`Charging started with a maximum spend of Rs. ${fmt(budget)}.`);
   } catch (error) {
+    clearChargeFx();
     toast(error.message, 'error');
   } finally {
     if ($('toggle-charge')) $('toggle-charge').disabled = false;
@@ -962,10 +985,12 @@ async function stopCharging(reason, notification = null) {
       p_reason: reason || 'User stopped session'
     });
     if (error) throw error;
+    confirmChargeFx();
     await loadSupabaseData();
     const billed = Number(data?.bill_pkr || 0);
     toast(notification || `Charging stopped • Rs. ${fmt(billed)} used; unused balance returned.`);
   } catch (error) {
+    clearChargeFx();
     toast(error.message, 'error');
   } finally {
     if (state.settlingSessionId === session.id) state.settlingSessionId = null;

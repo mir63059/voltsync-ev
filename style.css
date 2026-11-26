@@ -160,7 +160,7 @@ header.app-header { background-color: rgba(5,10,22,.82); box-shadow: 0 12px 30px
   position: fixed; inset: 0; z-index: 90; display: grid; place-items: center;
   background: radial-gradient(520px 320px at 50% 42%, rgba(16,185,129,.16), transparent 70%), var(--rv-bg);
   pointer-events: none;
-  animation: splashOut 1.4s var(--rv-ease) forwards;
+  animation: splashOut 1.3s var(--rv-ease) forwards;
 }
 .splash-inner { display: flex; flex-direction: column; align-items: center; gap: .75rem; padding: 1.5rem; text-align: center; }
 .splash-mark {
@@ -169,11 +169,11 @@ header.app-header { background-color: rgba(5,10,22,.82); box-shadow: 0 12px 30px
   font-size: 32px; font-weight: 900; box-shadow: 0 16px 40px -10px rgba(16,185,129,.7);
   animation: splashIn .45s var(--rv-ease) both;
 }
-.splash-bike { width: min(260px, 70vw); height: auto; overflow: visible; animation: bikeIn .6s .12s var(--rv-ease) both; }
+.splash-bike { width: min(280px, 72vw); height: auto; overflow: visible; animation: bikeIn .6s .12s var(--rv-ease) both; }
 .splash-name { font-size: 1.35rem; font-weight: 800; letter-spacing: .02em; animation: splashIn .45s .25s var(--rv-ease) both; }
 .splash-tag { font-size: .7rem; color: #94a3b8; letter-spacing: .14em; text-transform: uppercase; animation: splashIn .45s .32s var(--rv-ease) both; }
 @keyframes splashOut {
-  0%, 72% { opacity: 1; visibility: visible; transform: scale(1); }
+  0%, 70% { opacity: 1; visibility: visible; transform: scale(1); }
   100% { opacity: 0; visibility: hidden; transform: scale(1.03); }
 }
 @keyframes splashIn { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
@@ -183,9 +183,9 @@ header.app-header { background-color: rgba(5,10,22,.82); box-shadow: 0 12px 30px
 .rv-wheel { transform-box: fill-box; transform-origin: center; }
 .splash .rv-wheel { animation: rvSpin .9s linear infinite; }
 @keyframes rvSpin { to { transform: rotate(360deg); } }
-.rv-cable { stroke-dasharray: 100; stroke-dashoffset: 100; animation: cableDraw .5s .55s var(--rv-ease) forwards; }
-@keyframes cableDraw { to { stroke-dashoffset: 0; } }
-.rv-spark { transform-box: fill-box; transform-origin: center; animation: sparkPop .4s .95s var(--rv-ease) both; }
+.rv-pulse { stroke-dasharray: 14 100; stroke-dashoffset: 14; stroke-linecap: round; animation: energyRun .5s .45s ease-out both; }
+@keyframes energyRun { to { stroke-dashoffset: -100; } }
+.rv-spark { transform-box: fill-box; transform-origin: center; animation: sparkPop .4s .6s var(--rv-ease) both; }
 @keyframes sparkPop { from { opacity: 0; transform: scale(.2); } to { opacity: 1; transform: none; } }
 
 /* Start / Stop charging micro-animations (overlay over the live meter) */
@@ -196,10 +196,13 @@ header.app-header { background-color: rgba(5,10,22,.82); box-shadow: 0 12px 30px
 }
 .charge-fx svg { width: min(300px, 100%); height: auto; overflow: visible; }
 .charge-fx-text { font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #6ee7b7; }
-.charge-fx-text span { display: none; }
-.charge-fx.is-connect .fx-connect, .charge-fx.is-unplug .fx-unplug { display: inline; }
-.charge-fx.is-connect { animation: fxConnect .7s ease-out forwards; }
-.charge-fx.is-unplug { animation: fxUnplug .6s ease-in forwards; }
+.charge-fx-text { display: grid; justify-items: center; }
+.charge-fx-text span { grid-area: 1 / 1; opacity: 0; white-space: nowrap; transition: opacity .2s ease; }
+.charge-fx.is-connect .fx-connect, .charge-fx.is-unplug .fx-unplug { opacity: 1; }
+.charge-fx.is-connect.is-confirmed .fx-connect, .charge-fx.is-unplug.is-confirmed .fx-unplug { opacity: 0; }
+.charge-fx.is-connect.is-confirmed .fx-started, .charge-fx.is-unplug.is-confirmed .fx-stopped { opacity: 1; }
+.charge-fx.is-connect { animation: fxConnect var(--fx-ms, 1000ms) ease-out forwards; }
+.charge-fx.is-unplug { animation: fxUnplug var(--fx-ms, 850ms) ease-in forwards; }
 @keyframes fxConnect {
   0% { opacity: 0; visibility: visible; }
   12%, 82% { opacity: 1; visibility: visible; }
@@ -216,11 +219,12 @@ header.app-header { background-color: rgba(5,10,22,.82); box-shadow: 0 12px 30px
 .charge-fx .rv-fx-pulse { transform-box: fill-box; transform-origin: center; opacity: 0; }
 .charge-fx.is-connect .rv-fx-pulse { animation: fxPulse .36s ease-out .46s both; }
 .charge-fx.is-unplug .rv-fx-pulse { animation: fxPulse .3s ease-out .02s both; }
-@keyframes plugIn { from { transform: translateX(78px); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes plugOut { from { transform: none; opacity: 1; } to { transform: translateX(78px); opacity: 0; } }
+@keyframes plugIn { from { transform: translate(56px, -34px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes plugOut { from { transform: none; opacity: 1; } to { transform: translate(56px, -34px); opacity: 0; } }
 @keyframes fxPulse { from { opacity: .9; transform: scale(.6); } to { opacity: 0; transform: scale(3.4); } }
 
 /* Respect reduced-motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  .charge-fx.is-connect, .charge-fx.is-unplug { animation: none; visibility: visible; opacity: 1; }
 }
