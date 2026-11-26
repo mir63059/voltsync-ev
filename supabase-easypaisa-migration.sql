@@ -375,6 +375,11 @@ $$;
 revoke all on function public.review_easypaisa_payment(uuid,boolean) from public, anon;
 grant execute on function public.review_easypaisa_payment(uuid,boolean) to authenticated;
 
+-- Auto-approval credits TIDs without checking Easypaisa, so it is OFF by default.
+-- The owner admin enables it with: update system_settings set easypaisa_auto_verify_enabled = true where id = 1;
+alter table public.system_settings
+  add column if not exists easypaisa_auto_verify_enabled boolean not null default false;
+
 -- Approves every pending TID older than 120 seconds (database clock), crediting
 -- its exact submitted amount once. Rows are locked and status is flipped in the
 -- same transaction, so repeated polls, concurrent clients, or a later admin click
@@ -389,6 +394,12 @@ declare
   v_request public.easypaisa_payment_requests%rowtype;
   v_count integer := 0;
 begin
+  if not coalesce((
+    select easypaisa_auto_verify_enabled from public.system_settings where id = 1
+  ), false) then
+    return 0;
+  end if;
+
   for v_request in
     select * from public.easypaisa_payment_requests
     where status='pending'
