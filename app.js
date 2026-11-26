@@ -202,6 +202,7 @@ function applyViewMode(mode = state.viewMode) {
 async function init() {
   seedDemo();
   bindUI();
+  syncPillGroups();
   hideConfigUI();
   await renderEasypaisaDetails();
   const savedUrl = (localStorage.getItem('voltsync_url') || '').trim();
@@ -559,6 +560,16 @@ function bindUI() {
   if ($('payment-review-list')) $('payment-review-list').onclick = handleAdminPaymentReview;
   if ($('copy-easypaisa-number')) $('copy-easypaisa-number').onclick = copyEasypaisaNumber;
 
+  document.querySelectorAll('[data-pill-select]').forEach(pill => {
+    pill.onclick = () => {
+      const select = $(pill.dataset.pillSelect);
+      if (!select || select.disabled || select.value === pill.dataset.pillValue) return;
+      select.value = pill.dataset.pillValue;
+      select.dispatchEvent(new Event('change'));
+      syncPillGroups();
+    };
+  });
+
   if ($('budget-select')) {
     $('budget-select').onchange = () => {
       const isCustom = $('budget-select').value === 'custom';
@@ -897,6 +908,14 @@ function selectCharger(id) {
   switchMobileTab('charge');
 }
 
+function playChargeFx(kind) {
+  const fx = $('charge-fx');
+  if (!fx) return;
+  fx.classList.remove('is-connect', 'is-unplug');
+  void fx.offsetWidth;
+  fx.classList.add(kind === 'unplug' ? 'is-unplug' : 'is-connect');
+}
+
 async function toggleCharging() {
   if (!state.configured || !state.session?.user) {
     return toast('Sign in to a configured Supabase project before charging.', 'error');
@@ -919,6 +938,7 @@ async function toggleCharging() {
       p_budget_pkr: budget
     });
     if (error) throw error;
+    playChargeFx('connect');
     await loadSupabaseData();
     if ($('payment-message')) $('payment-message').textContent = '';
     toast(`Charging started with a maximum spend of Rs. ${fmt(budget)}.`);
@@ -933,6 +953,7 @@ async function toggleCharging() {
 async function stopCharging(reason, notification = null) {
   const session = state.activeDbSession;
   if (!session || !state.configured || state.settlingSessionId === session.id) return;
+  playChargeFx('unplug');
   state.settlingSessionId = session.id;
   if ($('toggle-charge')) $('toggle-charge').disabled = true;
   try {
@@ -1026,6 +1047,7 @@ function renderChargingControls() {
     }
     if ($('app-charger-code')) $('app-charger-code').textContent = active.station_id;
   }
+  syncPillGroups();
 }
 
 function secondsToHMS(s) {
@@ -1276,6 +1298,16 @@ async function copyEasypaisaNumber() {
   }
 }
 
+function syncPillGroups() {
+  document.querySelectorAll('[data-pill-select]').forEach(pill => {
+    const select = $(pill.dataset.pillSelect);
+    const active = Boolean(select) && select.value === pill.dataset.pillValue;
+    pill.classList.toggle('is-active', active);
+    pill.setAttribute('aria-checked', String(active));
+    pill.disabled = Boolean(select?.disabled);
+  });
+}
+
 function selectedPaymentAmount() {
   const selectEl = $('payment-amount');
   if (!selectEl) return null;
@@ -1296,6 +1328,7 @@ function selectedPaymentAmount() {
  function syncPaymentAmount() {
   const isCustom = $('payment-amount')?.value === 'custom';
   $('payment-custom-amount')?.classList.toggle('hidden', !isCustom);
+  syncPillGroups();
   const amount = selectedPaymentAmount();
   if ($('payment-paid-amount')) {
     $('payment-paid-amount').value = amount === null ? '' : (amount / 100).toFixed(2);
