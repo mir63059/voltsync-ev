@@ -1,10 +1,10 @@
 'use strict';
 
-const CACHE_NAME = 'rideasevx-shell-v18';
+const CACHE_NAME = 'rideasevx-shell-v19';
 const APP_SHELL = [
   './',
   './index.html',
-  './app.js?v=17',
+  './app.js?v=18',
   './style.css',
   './manifest.json',
   './easypaisa-qr.png',

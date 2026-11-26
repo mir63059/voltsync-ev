@@ -931,7 +931,6 @@ const SOUND_PATTERNS = {
 const CHARGE_START_TRACK_SRC = 'assets/charge-start.aac';
 let audioCtx = null;
 let chargeStartTrack = null;
-let chargeStartTrackFailed = false;
 const lastSoundAt = {};
 
 function isSoundEnabled() {
@@ -993,21 +992,36 @@ function getChargeStartTrack() {
   if (typeof Audio === 'undefined') return null;
   chargeStartTrack = new Audio(CHARGE_START_TRACK_SRC);
   chargeStartTrack.preload = 'auto';
-  chargeStartTrack.addEventListener('error', () => { chargeStartTrackFailed = true; });
   return chargeStartTrack;
 }
 
-// Plays the Charge Start track from the beginning. Falls back to the synthesized start chime if the track cannot load or play.
-function playChargeStartTrack() {
+// Runs inside the Start Charge click so the browser unlocks this audio element while the user gesture is still active.
+function primeChargeStartTrack() {
   if (!isSoundEnabled()) return;
   const track = getChargeStartTrack();
-  if (!track || chargeStartTrackFailed) return playSound('start');
-  if (!track.paused) return;
-  track.currentTime = 0;
-  const started = track.play();
-  started?.catch(() => {
-    if (track.paused) playSound('start');
-  });
+  if (!track) return;
+  track.muted = true;
+  const attempt = track.play();
+  track.pause();
+  track.muted = false;
+  attempt?.catch(() => {});
+}
+
+// Plays the Charge Start track from the beginning. A superseded play (AbortError) is not a failure, so only a real
+// playback error falls back to the synthesized start chime.
+async function playChargeStartTrack() {
+  if (!isSoundEnabled()) return;
+  const track = getChargeStartTrack();
+  if (!track) return playSound('start');
+  try {
+    if (track.error) track.load();
+    track.pause();
+    track.currentTime = 0;
+    await track.play();
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    playSound('start');
+  }
 }
 
 function stopChargeStartTrack() {
@@ -1081,6 +1095,7 @@ async function toggleCharging() {
   if (budget > balance) return toast('Budget exceeds your verified paid balance.', 'error');
 
   if ($('toggle-charge')) $('toggle-charge').disabled = true;
+  primeChargeStartTrack();
   playChargeFx('connect');
   try {
     const { error } = await state.supabase.rpc('start_charging_session', {
