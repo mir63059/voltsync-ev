@@ -181,11 +181,16 @@ header.app-header { background-color: rgba(5,10,22,.82); box-shadow: 0 12px 30px
 
 /* Charging status card: photo hero, text status below it (normal flow, never overlays metrics) */
 .charge-fx { border-radius: 1rem; overflow: hidden; border: 1px solid var(--rv-line-strong); background: var(--rv-surface); }
-.charge-photo-wrap { position: relative; aspect-ratio: 4 / 3; }
-.charge-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 70%; display: block; }
+.charge-photo-wrap { position: relative; aspect-ratio: 4 / 3; overflow: hidden; background: #05080f; }
+.charge-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 70%; display: block; transform-origin: 50% 60%; will-change: transform; animation: photoDrift 22s ease-in-out infinite alternate; }
+@keyframes photoDrift { from { transform: scale(1) translate3d(0, 0, 0); } to { transform: scale(1.07) translate3d(-1.5%, -1%, 0); } }
+.charge-photo-wrap::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(3,7,18,.05) 35%, rgba(3,7,18,.72) 100%); }
+.charge-glow { position: absolute; inset: 0; pointer-events: none; opacity: 0; will-change: opacity; background: radial-gradient(120% 80% at 50% 100%, rgba(16,185,129,.38), transparent 60%); transition: opacity .25s ease; }
+.charge-fx[data-state="started"] .charge-glow { animation: chargeBreath 2.8s ease-in-out infinite; }
+@keyframes chargeBreath { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 .charge-photo-wrap::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; box-shadow: inset 0 0 0 3px rgba(52,211,153,.9), inset 0 0 40px rgba(16,185,129,.45); }
 .charge-fx.is-connect .charge-photo-wrap::after { animation: fxRing var(--fx-ms, 850ms) ease-out both; }
-.charge-fx.is-unplug .charge-photo { animation: fxDim var(--fx-ms, 720ms) ease-in both; }
+.charge-fx.is-unplug .charge-photo-wrap { animation: fxDim var(--fx-ms, 720ms) ease-in both; }
 @keyframes fxRing { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes fxDim { from { filter: none; } to { filter: brightness(.6) saturate(.7); } }
 .charge-fx-text { display: grid; justify-items: center; min-height: 2.25rem; padding: .6rem .75rem; font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #6ee7b7; }
@@ -197,4 +202,6 @@ header.app-header { background-color: rgba(5,10,22,.82); box-shadow: 0 12px 30px
 /* Respect reduced-motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  .charge-photo { animation: none; transform: none; }
+  .charge-fx[data-state="started"] .charge-glow { animation: none; opacity: .6; }
 }
