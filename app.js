@@ -95,18 +95,20 @@ function hideConfigUI() {
 
 let deferredInstallPrompt = null;
 
-function toast(message, type = 'success') {
+function toast(message, type = 'success', duration = 3500) {
   const container = $('toast');
   if (!container) return;
   const el = document.createElement('div');
   el.className = `fade-in px-4 py-3 rounded-xl text-xs font-semibold border shadow-xl ${
     type === 'error'
       ? 'bg-red-950 border-red-700 text-red-300'
-      : 'bg-slate-900 border-emerald-500/30 text-emerald-300'
+      : type === 'info'
+        ? 'bg-slate-900 border-sky-500/40 text-sky-300'
+        : 'bg-slate-900 border-emerald-500/30 text-emerald-300'
   }`;
   el.textContent = message;
   container.appendChild(el);
-  setTimeout(() => el.remove(), 3500);
+  setTimeout(() => el.remove(), duration);
 }
 
 window.addEventListener('beforeinstallprompt', event => {
@@ -557,6 +559,7 @@ function bindUI() {
   if ($('payment-amount')) $('payment-amount').onchange = syncPaymentAmount;
   if ($('payment-custom-amount')) $('payment-custom-amount').oninput = syncPaymentAmount;
   if ($('payment-review-list')) $('payment-review-list').onclick = handleAdminPaymentReview;
+  if ($('copy-easypaisa-number')) $('copy-easypaisa-number').onclick = copyEasypaisaNumber;
 
   if ($('budget-select')) {
     $('budget-select').onchange = () => {
@@ -857,8 +860,19 @@ async function handleCameraScan(scanner, text) {
   await closeCameraScanner();
   const id = parseScannedStationId(text);
   const charger = state.chargers.find(c => c.id.toUpperCase() === id);
-  if (!charger) return toast(`Unrecognized charger QR${id ? ': ' + id : ''}`, 'error');
+  if (!charger) {
+    if (isEasypaisaPaymentQr(text)) return toast(EASYPAISA_PAYMENT_QR_MESSAGE, 'info', 9000);
+    return toast(`Unrecognized charger QR${id ? ': ' + id : ''}`, 'error');
+  }
   selectCharger(charger.id);
+}
+
+const EASYPAISA_PAYMENT_QR_MESSAGE = 'This is an Easypaisa Payment QR. Open your Easypaisa app to scan & pay, then enter your TID below. To start charging, scan the Charger Box QR (e.g. CHG-001).';
+
+// EMVCo payment payloads start with "000201"; Easypaisa/Raast payloads name the provider.
+function isEasypaisaPaymentQr(text) {
+  const raw = String(text || '').trim();
+  return raw.startsWith('000201') || /easypaisa|raast/i.test(raw);
 }
 
 // Charger QR codes encode JSON with station_id; plain station IDs are also accepted.
@@ -1228,7 +1242,14 @@ async function renderEasypaisaDetails() {
   }
   const image = $('easypaisa-qr');
   if (!image) return;
-  image.classList.add('hidden');
+  const frame = $('easypaisa-qr-frame');
+  const actions = $('easypaisa-qr-actions');
+  const setQrVisible = visible => {
+    image.classList.toggle('hidden', !visible);
+    frame?.classList.toggle('hidden', !visible);
+    actions?.classList.toggle('hidden', !visible);
+  };
+  setQrVisible(false);
   image.removeAttribute('src');
   if ($('easypaisa-qr-help')) {
     $('easypaisa-qr-help').textContent = isConfiguredEasypaisaAccount()
@@ -1242,14 +1263,26 @@ async function renderEasypaisaDetails() {
     }
     return;
   }
-  image.onload = () => image.classList.remove('hidden');
+  $('save-easypaisa-qr').href = EASYPAISA_QR_IMAGE;
+  $('open-easypaisa-qr').href = EASYPAISA_QR_IMAGE;
+  image.onload = () => setQrVisible(true);
   image.onerror = () => {
-    image.classList.add('hidden');
+    setQrVisible(false);
     if ($('easypaisa-qr-help')) {
       $('easypaisa-qr-help').textContent = 'Add easypaisa-qr.png to the project root to show the payment QR. Pay using the account details above.';
     }
   };
   image.src = EASYPAISA_QR_IMAGE;
+}
+
+async function copyEasypaisaNumber() {
+  if (!isConfiguredEasypaisaAccount()) return toast('Payments are disabled until you configure your Easypaisa account details.', 'error');
+  try {
+    await navigator.clipboard.writeText(EASYPAISA_ACCOUNT_NUMBER);
+    toast('Easypaisa number copied');
+  } catch {
+    toast('Copy failed. Long-press the number above to copy it.', 'error');
+  }
 }
 
 function selectedPaymentAmount() {

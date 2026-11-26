@@ -55,12 +55,19 @@
               <section class="rounded-2xl border border-emerald-500/25 bg-slate-900/90 p-4">
                 <h2 class="text-sm font-bold">Add Easypaisa balance</h2>
                 <p class="mt-1 text-xs text-slate-400">Pay the exact amount, submit its TID, then wait for manual verification before charging.</p>
-                <div class="mt-3 grid grid-cols-[1fr_auto] items-center gap-3">
+                <div class="mt-3">
                   <div class="space-y-1 text-xs">
                     <p>Account title: <strong id="easypaisa-title" class="break-words text-slate-100"></strong></p>
                     <p>Account number: <strong id="easypaisa-number" class="text-slate-100"></strong></p>
+                    <button id="copy-easypaisa-number" type="button" class="mt-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-bold text-emerald-400">Copy Number</button>
                   </div>
-                  <img id="easypaisa-qr" class="hidden h-24 w-24 rounded-lg bg-white object-contain p-1" alt="Easypaisa payment QR code">
+                </div>
+                <div id="easypaisa-qr-frame" class="hidden mx-auto mt-3 w-fit max-w-full rounded-2xl bg-white p-3">
+                  <img id="easypaisa-qr" class="block h-auto w-72 max-w-full" alt="Easypaisa payment QR code">
+                </div>
+                <div id="easypaisa-qr-actions" class="hidden mt-3 grid grid-cols-2 gap-2">
+                  <a id="save-easypaisa-qr" class="secondary-btn flex items-center justify-center text-center" download="easypaisa-qr.png">Save QR</a>
+                  <a id="open-easypaisa-qr" class="secondary-btn flex items-center justify-center text-center" target="_blank" rel="noopener">Open QR</a>
                 </div>
                 <p id="easypaisa-qr-help" class="mt-2 text-[10px] text-slate-400"></p>
                 <form id="payment-form" class="mt-3 space-y-2">
@@ -167,6 +174,6 @@
   <style>
     .metric-card{background:rgba(15,23,42,.9);border:1px solid #1e293b;border-radius:1rem;padding:.75rem}.metric-card span{display:block;color:#94a3b8;font-size:.75rem}.metric-card b{display:block;margin-top:.25rem;font:700 1.1rem 'JetBrains Mono',monospace}.kpi,.panel{background:#0f172a;border:1px solid #1e293b;border-radius:1rem;padding:1rem}.kpi span{display:block;color:#94a3b8;font-size:.68rem;text-transform:uppercase}.kpi b{display:block;margin-top:.4rem;font:700 1.15rem 'JetBrains Mono',monospace}.panel-title{font-size:.875rem;font-weight:700}button,.field{min-height:44px;touch-action:manipulation}#toast>div{max-width:calc(100vw - 2.5rem)}.field{width:100%;background:#020617;border:1px solid #334155;border-radius:.7rem;padding:.65rem .75rem;font-size:.75rem;outline:none}.field:focus{border-color:#10b981}.primary-btn{background:#10b981;color:#020617;border-radius:.7rem;padding:.65rem .9rem;font-size:.75rem;font-weight:800}.secondary-btn{background:#1e293b;border:1px solid #334155;border-radius:.7rem;padding:.65rem .9rem;font-size:.75rem}#auth-screen{overflow-y:auto;padding-top:max(1rem,env(safe-area-inset-top));padding-bottom:max(1rem,env(safe-area-inset-bottom))}#auth-screen .field{font-size:16px}
   </style>
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>
