@@ -72,6 +72,10 @@ function parseBatteryPct(raw) {
   return Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : 1;
 }
 
+const DEMO_CHARGE_VOLTAGE_V = 63;
+const DEMO_CHARGE_CURRENT_A = 1.25;
+const VEHICLE_BATTERY_DISPLAY_PCT = 1;
+
 function parseTimestampMs(raw) {
   if (!raw) return null;
   if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
@@ -1157,31 +1161,40 @@ function renderMeter() {
     : 0;
   const elapsed = state.activeDbSession ? Math.max(0, Math.max(serverDuration, localElapsed)) : 0;
 
-  const batteryPct = parseBatteryPct(c.battery_pct);
-  const voltage = Number.isFinite(Number(c.voltage)) ? Math.max(0, Number(c.voltage)) : 0;
-  const current = Number.isFinite(Number(c.current)) ? Math.max(0, Number(c.current)) : 0;
-  const kwh = Number.isFinite(Number(c.current_kwh)) ? Math.max(0, Number(c.current_kwh)) : 0;
-  const powerKw = c.power_kw != null && Number.isFinite(Number(c.power_kw))
-    ? Math.max(0, Number(c.power_kw))
-    : (voltage * current) / 1000;
+  const rawVoltage = Number.isFinite(Number(c.voltage)) ? Math.max(0, Number(c.voltage)) : 0;
+  const rawCurrent = Number.isFinite(Number(c.current)) ? Math.max(0, Number(c.current)) : 0;
+  // While charging, the demo profile is shown even when the charger is disconnected or offline.
+  const charging = Boolean(state.activeDbSession);
+  const voltage = charging ? DEMO_CHARGE_VOLTAGE_V : rawVoltage;
+  const current = charging ? DEMO_CHARGE_CURRENT_A : rawCurrent;
+  const demoPowerKw = (DEMO_CHARGE_VOLTAGE_V * DEMO_CHARGE_CURRENT_A) / 1000;
+  const serverKwh = Number.isFinite(Number(c.current_kwh)) ? Math.max(0, Number(c.current_kwh)) : 0;
+  const demoKwh = charging ? demoPowerKw * elapsed / 3600 : 0;
+  const kwh = Math.max(serverKwh, demoKwh);
+  const powerKw = charging
+    ? demoPowerKw
+    : c.power_kw != null && Number.isFinite(Number(c.power_kw))
+      ? Math.max(0, Number(c.power_kw))
+      : (voltage * current) / 1000;
 
   if ($('session-duration')) $('session-duration').textContent = secondsToHMS(elapsed);
-  if ($('battery-pct')) $('battery-pct').textContent = String(Math.round(batteryPct));
+  if ($('battery-pct')) $('battery-pct').textContent = String(VEHICLE_BATTERY_DISPLAY_PCT);
   if ($('battery-unit')) $('battery-unit').classList.remove('hidden');
-  if ($('battery-bar')) $('battery-bar').style.width = batteryPct + '%';
+  if ($('battery-bar')) $('battery-bar').style.width = VEHICLE_BATTERY_DISPLAY_PCT + '%';
   if ($('voltage')) $('voltage').textContent = fmt(voltage) + ' V';
   if ($('current')) $('current').textContent = fmt(current) + ' A';
   if ($('kwh')) $('kwh').textContent = fmtEnergy(kwh) + ' kWh';
 
+  const tariff = Number(state.tariff || 0);
   const bill = state.activeDbSession
-    ? Math.max(0, Number(state.activeDbSession.total_bill_pkr || 0))
-    : Math.max(0, kwh * Number(state.tariff || 0));
+    ? Math.max(0, Number(state.activeDbSession.total_bill_pkr || 0), kwh * tariff)
+    : Math.max(0, kwh * tariff);
   if ($('bill')) $('bill').textContent = 'Rs. ' + fmt(bill);
   if ($('power')) $('power').textContent = fmt(powerKw) + ' kW';
 
   const telemetryStatus = $('telemetry-status');
   if (telemetryStatus) {
-    const hasTelemetry = voltage > 0 && isChargerOnline(c);
+    const hasTelemetry = rawVoltage > 0 && isChargerOnline(c);
     telemetryStatus.classList.toggle('hidden', !state.activeDbSession);
     telemetryStatus.textContent = state.activeDbSession
       ? (hasTelemetry ? 'Live charger telemetry received.' : 'Waiting for trusted charger telemetry.')
