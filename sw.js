@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'rideasevx-shell-v22';
+const CACHE_NAME = 'rideasevx-shell-v23';
 const APP_SHELL = [
   './',
   './index.html',

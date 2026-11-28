@@ -170,6 +170,13 @@
     </div>
   </main>
 
+  <footer class="flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+    <div class="relative">
+      <button id="dev-signature-toggle" type="button" class="dev-signature-pill" aria-expanded="false" aria-controls="dev-signature-note">Built by Mir</button>
+      <p id="dev-signature-note" class="dev-signature-note" hidden>RideaseVX • Hardware &amp; Full-Stack by Mir Hamid Nawaz</p>
+    </div>
+  </footer>
+
   <!-- Supabase config modal -->
   <div id="config-modal" class="hidden fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-sm place-items-center p-4"><div class="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-5"><div class="flex justify-between"><div><h2 class="font-bold">Supabase Configuration</h2><p class="text-xs text-slate-400 mt-1">Leave blank to continue in local demo mode.</p></div><button id="close-config" class="min-w-11 text-slate-400">✕</button></div><label class="block mt-5 text-xs text-slate-400">Project URL</label><input id="supabase-url" class="field mt-1" placeholder="https://xxxx.supabase.co"><label class="block mt-3 text-xs text-slate-400">Anon / Publishable Key</label><input id="supabase-key" type="password" class="field mt-1" placeholder="eyJ..."><div class="flex justify-end gap-2 mt-5"><button id="clear-config" class="secondary-btn">Use Demo Mode</button><button id="save-config" class="primary-btn">Connect</button></div></div></div>
 

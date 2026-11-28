@@ -21,6 +21,14 @@
 @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
 .status-dot { box-shadow:0 0 10px currentColor; }
 
+/* Developer signature: low-profile pill that reveals a popover note; absolutely positioned so layout never shifts */
+.dev-signature-pill { min-height: 28px; padding: .25rem .75rem; border-radius: 9999px; border: 1px solid rgba(51,65,85,.8); background: rgba(2,6,23,.6); color: #64748b; font-size: .6875rem; letter-spacing: .04em; transition: color .2s ease, border-color .2s ease; }
+.dev-signature-pill:hover, .dev-signature-pill[aria-expanded="true"] { color: #34d399; border-color: rgba(16,185,129,.45); }
+.dev-signature-pill:focus-visible { outline: 2px solid #34d399; outline-offset: 2px; }
+.dev-signature-note { position: absolute; bottom: calc(100% + .5rem); left: 50%; transform: translateX(-50%); width: max-content; max-width: min(18rem, calc(100vw - 2rem)); padding: .5rem .75rem; border-radius: .75rem; border: 1px solid rgba(16,185,129,.35); background: rgba(2,6,23,.95); color: #a7f3d0; font-size: .6875rem; line-height: 1.4; text-align: center; box-shadow: 0 8px 24px -8px rgba(16,185,129,.35); z-index: 40; animation: devSigIn .2s ease-out; }
+.dev-signature-note:not([hidden]) { display: block; }
+@keyframes devSigIn { from { opacity: 0; } to { opacity: 1; } }
+
 /* Base layout: edge-to-edge on phones, natural page scroll, safe areas */
 html { -webkit-text-size-adjust: 100%; }
 body { overflow-x: hidden; }

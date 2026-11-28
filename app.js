@@ -1700,3 +1700,27 @@ async function runAutoVerificationCheck() {
 }
 
 init();
+
+// Developer signature: tap/click toggles the note; auto-hides, closes on outside click or Escape.
+(function initDevSignature() {
+  const toggle = $('dev-signature-toggle');
+  const note = $('dev-signature-note');
+  if (!toggle || !note) return;
+  let hideTimer = null;
+  const setOpen = (open) => {
+    clearTimeout(hideTimer);
+    note.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+    if (open) hideTimer = setTimeout(() => setOpen(false), 5000);
+  };
+  toggle.addEventListener('click', () => setOpen(note.hidden));
+  document.addEventListener('click', (event) => {
+    if (!note.hidden && !toggle.parentElement.contains(event.target)) setOpen(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !note.hidden) {
+      setOpen(false);
+      toggle.focus();
+    }
+  });
+})();
