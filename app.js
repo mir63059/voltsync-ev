@@ -75,6 +75,41 @@ function parseBatteryPct(raw) {
 const DEMO_CHARGE_VOLTAGE_V = 63;
 const DEMO_CHARGE_CURRENT_A = 1.25;
 const VEHICLE_BATTERY_DISPLAY_PCT = 1;
+const demoChargeSim = { sessionId: null, lastMs: 0, kwh: 0 };
+
+function smoothstep(x) {
+  const t = Math.min(1, Math.max(0, x));
+  return t * t * (3 - 2 * t);
+}
+
+// Voltage by seconds into the session: 63 V ramps to 70 V, eases down to 65 V, then holds with a gentle wave.
+function demoChargeVoltage(t) {
+  if (t < 60) return DEMO_CHARGE_VOLTAGE_V + 7 * smoothstep(t / 60);
+  if (t < 120) return 70 - 5 * smoothstep((t - 60) / 60);
+  const waveAmp = 0.4 * smoothstep((t - 120) / 20);
+  return 65 + waveAmp * Math.sin((2 * Math.PI * t) / 41);
+}
+
+function demoChargeCurrent(t) {
+  return DEMO_CHARGE_CURRENT_A
+    + 0.06 * Math.sin((2 * Math.PI * t) / 17)
+    + 0.025 * Math.sin((2 * Math.PI * t) / 5.3);
+}
+
+// Integrates demo energy from wall-clock time so billing advances at the same rate as the displayed V x A.
+function advanceDemoCharge(sessionId, elapsedSec) {
+  const now = Date.now();
+  if (demoChargeSim.sessionId !== sessionId) {
+    Object.assign(demoChargeSim, { sessionId, lastMs: now, kwh: 0 });
+  }
+  const t = Math.max(0, elapsedSec);
+  const voltage = demoChargeVoltage(t);
+  const current = demoChargeCurrent(t);
+  const powerKw = (voltage * current) / 1000;
+  demoChargeSim.kwh += powerKw * Math.max(0, now - demoChargeSim.lastMs) / 3600000;
+  demoChargeSim.lastMs = now;
+  return { voltage, current, powerKw, kwh: demoChargeSim.kwh };
+}
 
 function parseTimestampMs(raw) {
   if (!raw) return null;
@@ -1164,15 +1199,13 @@ function renderMeter() {
   const rawVoltage = Number.isFinite(Number(c.voltage)) ? Math.max(0, Number(c.voltage)) : 0;
   const rawCurrent = Number.isFinite(Number(c.current)) ? Math.max(0, Number(c.current)) : 0;
   // While charging, the demo profile is shown even when the charger is disconnected or offline.
-  const charging = Boolean(state.activeDbSession);
-  const voltage = charging ? DEMO_CHARGE_VOLTAGE_V : rawVoltage;
-  const current = charging ? DEMO_CHARGE_CURRENT_A : rawCurrent;
-  const demoPowerKw = (DEMO_CHARGE_VOLTAGE_V * DEMO_CHARGE_CURRENT_A) / 1000;
+  const demo = state.activeDbSession ? advanceDemoCharge(state.activeDbSession.id, elapsed) : null;
+  const voltage = demo ? demo.voltage : rawVoltage;
+  const current = demo ? demo.current : rawCurrent;
   const serverKwh = Number.isFinite(Number(c.current_kwh)) ? Math.max(0, Number(c.current_kwh)) : 0;
-  const demoKwh = charging ? demoPowerKw * elapsed / 3600 : 0;
-  const kwh = Math.max(serverKwh, demoKwh);
-  const powerKw = charging
-    ? demoPowerKw
+  const kwh = demo ? Math.max(serverKwh, demo.kwh) : serverKwh;
+  const powerKw = demo
+    ? demo.powerKw
     : c.power_kw != null && Number.isFinite(Number(c.power_kw))
       ? Math.max(0, Number(c.power_kw))
       : (voltage * current) / 1000;
